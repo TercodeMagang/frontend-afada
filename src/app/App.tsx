@@ -367,10 +367,10 @@ function Navbar({ setPage, setAuthTab }: { setPage: (p: Page) => void; setAuthTa
           <button onClick={() => setPage("faq")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">FAQ</button>
         </div>
         <div className="hidden md:flex items-center gap-3">
-          <button onClick={() => { setAuthTab("login"); setPage("login") }} className="px-4 py-2 text-sm text-foreground hover:text-primary transition-colors">
+          <button onClick={() => window.location.href = "http://localhost:5174"} className="...">
             Masuk
           </button>
-          <button onClick={() => setPage("checkout")} className="px-5 py-2.5 text-sm bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)]">
+          <button onClick={() => window.location.href = "http://localhost:5174"} className="...">
             Mulai Gratis
           </button>
         </div>
@@ -416,7 +416,7 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
               Undangan digital elegan yang bisa dibagikan via WhatsApp. Tanpa keahlian desain, siap dalam hitungan menit.
             </p>
             <div className="flex flex-wrap gap-3 mb-10">
-              <button onClick={() => setPage("checkout")} className="px-7 py-3.5 bg-primary text-primary-foreground rounded-full font-medium hover:bg-primary/90 transition-all hover:shadow-[0_8px_28px_rgba(196,149,74,0.38)] flex items-center gap-2 text-sm">
+              <button onClick={() => window.location.href = "http://localhost:5174"} className="...">
                 Mulai Buat Undangan <ArrowRight className="w-4 h-4" />
               </button>
               <button onClick={() => setPage("templates")} className="px-7 py-3.5 border border-border rounded-full font-medium hover:border-primary/60 hover:text-primary transition-all flex items-center gap-2 text-sm">
