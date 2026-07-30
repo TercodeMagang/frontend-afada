@@ -1,5 +1,4 @@
-import { useNavigate, useLocation } from 'react-router-dom'
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "motion/react"
 import {
   Heart, Menu, X, Smartphone, Globe, Music, Users, MapPin,
@@ -14,6 +13,44 @@ import {
 } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import { Toaster, toast } from "sonner"
+
+// ─── SCROLL RESTORATION HOOK ─────────────────────────────────────────────────
+function useScrollRestoration(pageName: string) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    const savedPosition = sessionStorage.getItem(`scroll-${pageName}`)
+    if (savedPosition && scrollRef.current) {
+      scrollRef.current.scrollTop = parseInt(savedPosition, 10)
+    } else if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0
+    }
+  }, [pageName])
+
+  // Save scroll position before unmount
+  useEffect(() => {
+    return () => {
+      if (scrollRef.current) {
+        sessionStorage.setItem(`scroll-${pageName}`, scrollRef.current.scrollTop.toString())
+      }
+    }
+  }, [pageName])
+
+  // Save scroll position on page refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (scrollRef.current) {
+        sessionStorage.setItem(`scroll-${pageName}`, scrollRef.current.scrollTop.toString())
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [pageName])
+
+  return scrollRef
+}
 
 type Page =
   | "landing"
@@ -33,10 +70,16 @@ type Page =
   | "contact"
   | "terms"
   | "privacy"
+  | "my-invitations"
+  | "edit-profile"
+  | "purchase-history"  // ← TAMBAHKAN INI
+  | "invitation-editor" // ← TAMBAHKAN INI
+  | "guest-invitation"  // ← TAMBAHKAN INI
+  | "history"  // ← Tambahkan ini
+  | "template-selection"
 type AuthTab = "login" | "register"
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
-
 const WHY_US = [
   { icon: Smartphone, title: "Mudah Digunakan", desc: "Buat undangan dalam hitungan menit, tanpa keahlian desain apapun" },
   { icon: Edit3, title: "Edit Lewat HP", desc: "Akses dan edit undangan kapan saja dari perangkat apapun" },
@@ -146,7 +189,6 @@ const EDITOR_TABS = [
 const PAGES_LIST = ["Opening", "Mempelai", "Akad", "Resepsi", "Galeri", "RSVP", "Ucapan", "Penutup"]
 
 // ─── PAYMENT DATA ─────────────────────────────────────────────────────────────
-
 const PACKAGES = [
   {
     id: "basic",
@@ -260,7 +302,6 @@ const MOCK_TRANSACTIONS = [
 const fmt = (n: number) => "Rp " + n.toLocaleString("id-ID")
 
 // ─── UTILITY COMPONENTS ───────────────────────────────────────────────────────
-
 function QRCodeDisplay() {
   const size = 23
   const pattern = Array.from({ length: size * size }, (_, i) => {
@@ -349,30 +390,78 @@ function BankChip({ code, bg, fg }: { code: string; bg: string; fg: string }) {
   )
 }
 
-// ─── NAVBAR ──────────────────────────────────────────────────────────────────
-
-function Navbar({ setPage, setAuthTab }: { setPage: (p: Page) => void; setAuthTab: (t: AuthTab) => void }) {
+// ─ NAVBAR ──────────────────────────────────────────────────────────────────
+function Navbar({
+  setPage,
+  setAuthTab,
+  isAuthenticated,
+  currentUser,
+  onLogout
+}: {
+  setPage: (p: Page) => void
+  setAuthTab: (t: AuthTab) => void
+  isAuthenticated: boolean
+  currentUser: { name: string; email: string } | null
+  onLogout: () => void
+}) {
   const [open, setOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+
   return (
-    <nav className="fixed top-0 inset-x-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        <button onClick={() => setPage("landing")} className="flex items-center gap-2 group">
+        <button onClick={() => { window.scrollTo(0, 0); setPage("landing") }} className="flex items-center gap-2 group">
           <Heart className="w-5 h-5 text-primary fill-primary/20 group-hover:fill-primary/50 transition-all" />
           <span className="font-serif text-xl font-semibold italic">Invito</span>
         </button>
         <div className="hidden md:flex items-center gap-8">
-          <button onClick={() => setPage("features")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Fitur</button>
-          <button onClick={() => setPage("templates")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Tema</button>
-          <button onClick={() => setPage("pricing")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Harga</button>
-          <button onClick={() => setPage("faq")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">FAQ</button>
+          <button onClick={() => { window.scrollTo(0, 0); setPage("features") }} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Fitur</button>
+          <button onClick={() => { window.scrollTo(0, 0); setPage("templates") }} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Tema</button>
+          <button onClick={() => { window.scrollTo(0, 0); setPage("pricing") }} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Harga</button>
+          <button onClick={() => { window.scrollTo(0, 0); setPage("faq") }} className="text-sm text-muted-foreground hover:text-foreground transition-colors">FAQ</button>
+          {isAuthenticated && (
+            <button onClick={() => { window.scrollTo(0, 0); setPage("history") }} className="text-sm text-primary font-medium hover:text-primary/80 transition-colors">Riwayat</button>
+          )}
         </div>
         <div className="hidden md:flex items-center gap-3">
-          <button onClick={() => window.location.href = "http://localhost:5174"} className="...">
-            Masuk
-          </button>
-          <button onClick={() => window.location.href = "http://localhost:5174"} className="...">
-            Mulai Gratis
-          </button>
+          {!isAuthenticated ? (
+            <button
+              onClick={() => { setAuthTab("login"); setPage("login") }}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors"
+            >
+              Login
+            </button>
+          ) : (
+            <div className="relative">
+              <button onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-2 px-4 py-2 text-sm bg-muted rounded-full hover:bg-muted/80 transition-colors">
+                <User className="w-4 h-4" />
+                <span className="font-medium">{currentUser?.name.split(' ')[0]}</span>
+                <ChevronRight className={`w-3 h-3 transition-transform ${profileOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {profileOpen && (
+                <div className="absolute right-0 mt-2 w-56 bg-card rounded-xl border border-border shadow-lg py-2 z-50">
+                  <div className="px-4 py-3 border-b border-border">
+                    <p className="text-sm font-semibold">{currentUser?.name}</p>
+                    <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
+                  </div>
+                  <button
+                    onClick={() => { setPage("edit-profile"); setProfileOpen(false) }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2"
+                  >
+                    <Edit3 className="w-4 h-4" /> Edit Profil
+                  </button>
+                  <div className="border-t border-border mt-2 pt-2">
+                    <button
+                      onClick={() => { onLogout(); setProfileOpen(false) }}
+                      className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <LogOut className="w-4 h-4" /> Logout
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <button onClick={() => setOpen(!open)} className="md:hidden p-2 rounded-lg hover:bg-muted transition-colors">
           {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -380,12 +469,41 @@ function Navbar({ setPage, setAuthTab }: { setPage: (p: Page) => void; setAuthTa
       </div>
       {open && (
         <div className="md:hidden bg-background border-t border-border px-6 py-4">
-          {["Fitur", "Tema", "Harga", "Blog"].map((item) => (
-            <div key={item} className="py-3 text-sm border-b border-border/40">{item}</div>
+          {["Fitur", "Tema", "Harga", "FAQ"].map((item) => (
+            <div key={item} className="py-3 text-sm border-b border-border/40">
+              <button onClick={() => {
+                window.scrollTo(0, 0)
+                if (item === "Fitur") setPage("features")
+                else if (item === "Tema") setPage("templates")
+                else if (item === "Harga") setPage("pricing")
+                else if (item === "FAQ") setPage("faq")
+                setOpen(false)
+              }}>{item}</button>
+            </div>
           ))}
+          {isAuthenticated && (
+            <div className="py-3 text-sm border-b border-border/40">
+              <button onClick={() => {
+                window.scrollTo(0, 0)
+                setPage("history")
+                setOpen(false)
+              }} className="text-primary font-medium">Riwayat</button>
+            </div>
+          )}
           <div className="pt-4 flex flex-col gap-2">
-            <button onClick={() => { setAuthTab("login"); setPage("login"); setOpen(false) }} className="w-full py-3 text-sm border border-border rounded-full">Masuk</button>
-            <button onClick={() => { setAuthTab("register"); setPage("login"); setOpen(false) }} className="w-full py-3 text-sm bg-primary text-primary-foreground rounded-full">Mulai Gratis</button>
+            {!isAuthenticated ? (
+              <button
+                onClick={() => { setAuthTab("login"); setPage("login"); setOpen(false) }}
+                className="w-full py-3 text-sm bg-primary text-primary-foreground rounded-full"
+              >
+                Login
+              </button>
+            ) : (
+              <>
+                <button onClick={() => { setPage("edit-profile"); setOpen(false) }} className="w-full py-3 text-sm bg-muted rounded-full flex items-center gap-2"><Edit3 className="w-4 h-4" /> Edit Profil</button>
+                <button onClick={() => { onLogout(); setOpen(false) }} className="w-full py-3 text-sm text-red-500 border border-red-200 rounded-full">Logout</button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -394,12 +512,30 @@ function Navbar({ setPage, setAuthTab }: { setPage: (p: Page) => void; setAuthTa
 }
 
 // ─── LANDING PAGE ─────────────────────────────────────────────────────────────
+function LandingPage({
+  setPage,
+  setAuthTab,
+  isAuthenticated,
+  currentUser,
+  onLogout
+}: {
+  setPage: (p: Page) => void
+  setAuthTab: (t: AuthTab) => void
+  isAuthenticated: boolean
+  currentUser: { name: string; email: string } | null
+  onLogout: () => void
+}) {
+  const scrollRef = useScrollRestoration("landing")
 
-function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setAuthTab: (t: AuthTab) => void }) {
   return (
-    <div className="min-h-screen bg-background font-sans">
-      <Navbar setPage={setPage} setAuthTab={setAuthTab} />
-
+    <div ref={scrollRef} className="min-h-screen bg-background font-sans overflow-auto">
+      <Navbar
+        setPage={setPage}
+        setAuthTab={setAuthTab}
+        isAuthenticated={isAuthenticated}
+        currentUser={currentUser}
+        onLogout={onLogout}
+      />
       {/* HERO */}
       <section className="pt-28 pb-24 px-6 max-w-6xl mx-auto">
         <div className="grid lg:grid-cols-2 gap-16 items-center">
@@ -416,7 +552,10 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
               Undangan digital elegan yang bisa dibagikan via WhatsApp. Tanpa keahlian desain, siap dalam hitungan menit.
             </p>
             <div className="flex flex-wrap gap-3 mb-10">
-              <button onClick={() => window.location.href = "http://localhost:5174"} className="...">
+              <button
+                onClick={() => isAuthenticated ? setPage("checkout") : (setAuthTab("register"), setPage("login"))}
+                className="px-8 py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_8px_28px_rgba(196,149,74,0.4)] flex items-center gap-2"
+              >
                 Mulai Buat Undangan <ArrowRight className="w-4 h-4" />
               </button>
               <button onClick={() => setPage("templates")} className="px-7 py-3.5 border border-border rounded-full font-medium hover:border-primary/60 hover:text-primary transition-all flex items-center gap-2 text-sm">
@@ -546,8 +685,17 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
                 <div className="p-4 flex items-center justify-between">
                   <div><h3 className="font-semibold text-sm">{name}</h3><p className="text-[11px] text-muted-foreground mt-0.5">24 variasi tersedia</p></div>
                   <div className="flex gap-2">
-                    <button className="px-3 py-1.5 text-[11px] border border-border rounded-full hover:border-primary hover:text-primary transition-colors">Preview</button>
-                    <button onClick={() => setPage("checkout")} className="px-3 py-1.5 text-[11px] bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors">Gunakan</button>
+                    <button
+                      onClick={() => {
+                        alert(`Preview tema ${name} - Fitur ini akan segera hadir!`)
+                      }}
+                      className="px-3 py-1.5 text-[11px] border border-border rounded-full hover:border-primary hover:text-primary transition-colors"
+                    >
+                      Preview
+                    </button>
+                    <button onClick={() => setPage("checkout")} className="px-3 py-1.5 text-[11px] bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors">
+                      Gunakan
+                    </button>
                   </div>
                 </div>
               </motion.div>
@@ -669,7 +817,7 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
                 <button onClick={() => setPage("checkout")} className="px-8 py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_8px_28px_rgba(196,149,74,0.4)] flex items-center gap-2">
                   Mulai Gratis <ArrowRight className="w-4 h-4" />
                 </button>
-                <button onClick={() => setPage("templates")} className="...">Lihat Semua Template</button>
+                <button onClick={() => setPage("templates")} className="px-8 py-3.5 border border-border rounded-full text-sm font-medium hover:border-primary hover:text-primary transition-all">Lihat Semua Template</button>
               </div>
             </div>
           </div>
@@ -680,7 +828,6 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
       <footer className="py-16 px-6 bg-foreground text-background">
         <div className="max-w-6xl mx-auto">
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-10 mb-14">
-            {/* Brand */}
             <div className="lg:col-span-2">
               <div className="flex items-center gap-2 mb-5">
                 <Heart className="w-5 h-5 text-primary fill-primary/30" />
@@ -690,8 +837,6 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
                 Platform undangan digital pernikahan terbaik di Indonesia. Jadikan momen spesial Anda semakin berkesan.
               </p>
             </div>
-
-            {/* Perusahaan */}
             <div>
               <h4 className="font-semibold text-sm mb-4">Perusahaan</h4>
               <ul className="space-y-2.5">
@@ -701,8 +846,6 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
                 <li><button className="text-sm text-background/55 hover:text-background transition-colors">Press Kit</button></li>
               </ul>
             </div>
-
-            {/* Bantuan */}
             <div>
               <h4 className="font-semibold text-sm mb-4">Bantuan</h4>
               <ul className="space-y-2.5">
@@ -712,8 +855,6 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
                 <li><button className="text-sm text-background/55 hover:text-background transition-colors">WhatsApp Support</button></li>
               </ul>
             </div>
-
-            {/* Legal */}
             <div>
               <h4 className="font-semibold text-sm mb-4">Legal</h4>
               <ul className="space-y-2.5">
@@ -723,8 +864,6 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
               </ul>
             </div>
           </div>
-
-          {/* Bottom Bar */}
           <div className="border-t border-background/10 pt-8 flex flex-col sm:flex-row justify-between items-center gap-3">
             <p className="text-xs text-background/40">© 2025 Invito. Hak cipta dilindungi undang-undang.</p>
             <p className="text-xs text-background/40">Dibuat dengan ❤️ di Indonesia</p>
@@ -736,12 +875,48 @@ function LandingPage({ setPage, setAuthTab }: { setPage: (p: Page) => void; setA
 }
 
 // ─── AUTH PAGE ────────────────────────────────────────────────────────────────
-
-function AuthPage({ setPage, initialTab }: { setPage: (p: Page) => void; initialTab: AuthTab }) {
+function AuthPage({
+  setPage,
+  initialTab,
+  onLogin
+}: {
+  setPage: (p: Page) => void
+  initialTab: AuthTab
+  onLogin: (user: { name: string; email: string }) => void
+}) {
   const [tab, setTab] = useState<AuthTab>(initialTab)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    // Validasi sederhana
+    if (tab === "register" && name.length < 3) {
+      toast.error("Nama minimal 3 karakter!")
+      return
+    }
+    if (email.length < 5 || !email.includes("@")) {
+      toast.error("Email tidak valid!")
+      return
+    }
+    if (password.length < 6) {
+      toast.error("Password minimal 6 karakter!")
+      return
+    }
+    // Simulasi login berhasil
+    toast.success(tab === "login" ? "Login berhasil!" : "Registrasi berhasil!")
+    // Set user sebagai logged in
+    onLogin({
+      name: tab === "register" ? name : "User",
+      email: email
+    })
+    // Kembali ke halaman utama (frontend) setelah 1 detik
+    setTimeout(() => {
+      setPage("landing")
+    }, 1000)
+  }
+
   return (
     <div className="min-h-screen bg-secondary flex font-sans">
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
@@ -798,7 +973,7 @@ function AuthPage({ setPage, initialTab }: { setPage: (p: Page) => void; initial
               </div>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors" />
             </div>
-            <button onClick={() => setPage("dashboard")} className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] mt-2">
+            <button onClick={handleLogin} className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] mt-2">
               {tab === "login" ? "Masuk" : "Buat Akun Gratis"}
             </button>
           </div>
@@ -814,9 +989,164 @@ function AuthPage({ setPage, initialTab }: { setPage: (p: Page) => void; initial
   )
 }
 
-// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+// ─── EDIT PROFILE PAGE ───────────────────────────────────────────────────────
+function EditProfilePage({
+  setPage,
+  currentUser,
+  onUpdateProfile
+}: {
+  setPage: (p: Page) => void
+  currentUser: { name: string; email: string } | null
+  onUpdateProfile: (data: { name: string; email: string; password?: string }) => void
+}) {
+  const [name, setName] = useState(currentUser?.name || "")
+  const [email, setEmail] = useState(currentUser?.email || "")
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
 
-function DashboardPage({ setPage }: { setPage: (p: Page) => void }) {
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (name.length < 3) {
+      toast.error("Nama minimal 3 karakter!")
+      return
+    }
+    if (!email.includes("@")) {
+      toast.error("Email tidak valid!")
+      return
+    }
+    // Jika ada password baru, validasi
+    if (newPassword || confirmPassword) {
+      if (!currentPassword) {
+        toast.error("Masukkan password lama!")
+        return
+      }
+      if (newPassword.length < 6) {
+        toast.error("Password baru minimal 6 karakter!")
+        return
+      }
+      if (newPassword !== confirmPassword) {
+        toast.error("Konfirmasi password tidak cocok!")
+        return
+      }
+    }
+    onUpdateProfile({
+      name,
+      email,
+      password: newPassword || undefined
+    })
+    toast.success("Profil berhasil diperbarui!")
+    setTimeout(() => setPage("landing"), 1000)
+  }
+
+  return (
+    <div className="min-h-screen bg-secondary flex font-sans pt-20 pb-12">
+      <div className="w-full max-w-2xl mx-auto px-6">
+        <button onClick={() => setPage("landing")} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
+          <ChevronRight className="w-4 h-4 rotate-180" /> Kembali
+        </button>
+        <div className="bg-card rounded-2xl border border-border p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+              <User className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="font-serif text-2xl font-semibold">Edit Profil</h1>
+              <p className="text-sm text-muted-foreground">Kelola informasi akun Anda</p>
+            </div>
+          </div>
+          <form onSubmit={handleSaveProfile} className="space-y-6">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Nama Lengkap</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Masukkan nama lengkap"
+                className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nama@email.com"
+                className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
+              />
+            </div>
+            <div className="border-t border-border pt-6 mt-6">
+              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Ubah Password
+              </h3>
+              <p className="text-xs text-muted-foreground mb-4">Kosongkan jika tidak ingin mengubah password</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Password Saat Ini</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
+                  />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Password Baru</label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Konfirmasi Password</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setPage("landing")}
+                className="flex-1 py-3 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all"
+              >
+                Simpan Perubahan
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+function DashboardPage({
+  setPage,
+  onLogout
+}: {
+  setPage: (p: Page) => void
+  onLogout: () => void
+}) {
   const [activeMenu, setActiveMenu] = useState("Dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [txFilter, setTxFilter] = useState("Semua")
@@ -853,14 +1183,12 @@ function DashboardPage({ setPage }: { setPage: (p: Page) => void }) {
               <p className="text-[10px] text-sidebar-foreground/45 truncate">anisa@email.com</p>
             </div>
           </div>
-          <button onClick={() => setPage("landing")} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground text-xs transition-colors">
+          <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground text-xs transition-colors">
             <LogOut className="w-3.5 h-3.5" /> Keluar
           </button>
         </div>
       </aside>
-
       {sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-foreground/40 z-30 lg:hidden" />}
-
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-14 bg-card border-b border-border px-5 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -877,10 +1205,8 @@ function DashboardPage({ setPage }: { setPage: (p: Page) => void }) {
             </button>
           </div>
         </header>
-
         <main className="flex-1 overflow-y-auto p-5">
           {activeMenu === "Transaksi" ? (
-            /* ─ TRANSACTION HISTORY ─ */
             <div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                 <div>
@@ -931,7 +1257,6 @@ function DashboardPage({ setPage }: { setPage: (p: Page) => void }) {
                   <div className="py-12 text-center text-muted-foreground text-sm">Tidak ada transaksi ditemukan</div>
                 )}
               </div>
-              {/* Summary cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
                 {[
                   { label: "Total Pendapatan", value: "Rp 1.343.000", icon: TrendingUp, color: "text-green-500 bg-green-50" },
@@ -948,7 +1273,6 @@ function DashboardPage({ setPage }: { setPage: (p: Page) => void }) {
               </div>
             </div>
           ) : (
-            /* ─ MAIN DASHBOARD ─ */
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
                 {[
@@ -1042,12 +1366,12 @@ function DashboardPage({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-// ─── EDITOR PAGE ──────────────────────────────────────────────────────────────
-
+// ─── EDITOR PAGE ─────────────────────────────────────────────────────────────
 function EditorPage({ setPage }: { setPage: (p: Page) => void }) {
   const [activeTab, setActiveTab] = useState("Tema")
   const [activeSection, setActiveSection] = useState("Opening")
   const [selectedTheme, setSelectedTheme] = useState(0)
+
   return (
     <div className="flex h-screen bg-muted overflow-hidden font-sans">
       <div className="w-64 bg-card border-r border-border flex flex-col flex-shrink-0">
@@ -1179,16 +1503,58 @@ function EditorPage({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-// ─── CHECKOUT PAGE ────────────────────────────────────────────────────────────
-
+/// ─── CHECKOUT PAGE ───────────────────────────────────────────────────────────
 function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
   const [selectedPkg, setSelectedPkg] = useState("standard")
-  const [form, setForm] = useState({ name: "", email: "", wa: "", bride: "", groom: "", date: "" })
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    wa: "",
+    bride: "",
+    groom: "",
+    date: ""
+  })
   const pkg = PACKAGES.find(p => p.id === selectedPkg)!
+
+  // HANYA simpan draft ke current_invitation, JANGAN ke user_invitations
+  useEffect(() => {
+    if (form.bride && form.groom && form.date) {
+      const invitationData = {
+        id: `inv_${Date.now()}`,
+        brideName: form.bride,
+        groomName: form.groom,
+        weddingDate: form.date,
+        coupleName: `${form.bride} & ${form.groom}`,
+        theme: "Elegant",
+        package: pkg.name,
+        status: "Pending",
+        visits: "0",
+        purchaseDate: new Date().toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        }),
+        validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        }),
+        isActive: false,
+        description: "",
+        guestList: [],
+        gallery: [],
+        logoSound: "",
+        invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-001`,
+        paymentMethod: "",
+        total: pkg.price
+      }
+      // HANYA simpan sebagai draft, JANGAN push ke user_invitations
+      localStorage.setItem('current_invitation', JSON.stringify(invitationData))
+    }
+  }, [form.bride, form.groom, form.date, pkg.name])
 
   return (
     <div className="min-h-screen bg-secondary font-sans">
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <button onClick={() => setPage("landing")} className="flex items-center gap-2">
@@ -1196,13 +1562,24 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
             <span className="font-serif text-lg font-semibold italic">Invito</span>
           </button>
           <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5 text-primary font-medium"><div className="w-5 h-5 bg-primary text-white rounded-full flex items-center justify-center text-[10px]">1</div>Pilih Paket</div>
+            <div className="flex items-center gap-1.5 text-primary font-medium">
+              <div className="w-5 h-5 bg-primary text-white rounded-full flex items-center justify-center text-[10px]">1</div>
+              Pilih Paket
+            </div>
             <div className="w-8 h-px bg-border" />
-            <div className="flex items-center gap-1.5"><div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">2</div>Metode Bayar</div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">2</div>
+              Metode Bayar
+            </div>
             <div className="w-8 h-px bg-border" />
-            <div className="flex items-center gap-1.5"><div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">3</div>Konfirmasi</div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">3</div>
+              Konfirmasi
+            </div>
           </div>
-          <button onClick={() => setPage("landing")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><ChevronRight className="w-3.5 h-3.5 rotate-180" />Kembali</button>
+          <button onClick={() => setPage("landing")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+            <ChevronRight className="w-3.5 h-3.5 rotate-180" />Kembali
+          </button>
         </div>
       </header>
 
@@ -1214,13 +1591,20 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
 
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-5">
-            {/* Package selection */}
             <div className="bg-card rounded-2xl p-6 border border-border">
-              <h2 className="font-semibold mb-4 flex items-center gap-2"><Package className="w-4 h-4 text-primary" />Pilih Paket</h2>
+              <h2 className="font-semibold mb-4 flex items-center gap-2">
+                <Package className="w-4 h-4 text-primary" />Pilih Paket
+              </h2>
               <div className="space-y-3">
                 {PACKAGES.map((p) => (
-                  <label key={p.id} onClick={() => setSelectedPkg(p.id)} className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPkg === p.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}>
-                    <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${selectedPkg === p.id ? "border-primary bg-primary" : "border-muted-foreground/30"}`}>
+                  <label
+                    key={p.id}
+                    onClick={() => setSelectedPkg(p.id)}
+                    className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPkg === p.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
+                      }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${selectedPkg === p.id ? "border-primary bg-primary" : "border-muted-foreground/30"
+                      }`}>
                       {selectedPkg === p.id && <div className="w-2 h-2 bg-white rounded-full" />}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1230,7 +1614,9 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
                       </div>
                       <p className="text-xs text-muted-foreground mb-2">{p.subtitle}</p>
                       <div className="flex flex-wrap gap-1">
-                        {p.features.slice(0, 3).map((f, i) => <span key={i} className="text-[10px] bg-muted px-2 py-0.5 rounded-full">{f}</span>)}
+                        {p.features.slice(0, 3).map((f, i) => (
+                          <span key={i} className="text-[10px] bg-muted px-2 py-0.5 rounded-full">{f}</span>
+                        ))}
                         {p.features.length > 3 && <span className="text-[10px] text-muted-foreground">+{p.features.length - 3} lainnya</span>}
                       </div>
                     </div>
@@ -1243,9 +1629,10 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
               </div>
             </div>
 
-            {/* Order detail */}
             <div className="bg-card rounded-2xl p-6 border border-border">
-              <h2 className="font-semibold mb-4 flex items-center gap-2"><Heart className="w-4 h-4 text-primary" />Detail Undangan</h2>
+              <h2 className="font-semibold mb-4 flex items-center gap-2">
+                <Heart className="w-4 h-4 text-primary" />Detail Undangan
+              </h2>
               <div className="grid sm:grid-cols-2 gap-4">
                 {[
                   { label: "Nama Mempelai Wanita", key: "bride", placeholder: "Nama mempelai wanita" },
@@ -1254,15 +1641,22 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
                 ].map(({ label, key, placeholder, type }) => (
                   <div key={key} className={key === "date" ? "sm:col-span-2" : ""}>
                     <label className="text-xs font-medium mb-1.5 block">{label}</label>
-                    <input type={type ?? "text"} placeholder={placeholder} value={(form as any)[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} className="w-full px-3.5 py-2.5 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors" />
+                    <input
+                      type={type ?? "text"}
+                      placeholder={placeholder}
+                      value={(form as any)[key]}
+                      onChange={e => setForm({ ...form, [key]: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
+                    />
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Pemesan */}
             <div className="bg-card rounded-2xl p-6 border border-border">
-              <h2 className="font-semibold mb-4 flex items-center gap-2"><User className="w-4 h-4 text-primary" />Data Pemesan</h2>
+              <h2 className="font-semibold mb-4 flex items-center gap-2">
+                <User className="w-4 h-4 text-primary" />Data Pemesan
+              </h2>
               <div className="space-y-4">
                 {[
                   { label: "Nama Lengkap", key: "name", placeholder: "Masukkan nama lengkap", type: "text" },
@@ -1271,14 +1665,19 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
                 ].map(({ label, key, placeholder, type }) => (
                   <div key={key}>
                     <label className="text-xs font-medium mb-1.5 block">{label}</label>
-                    <input type={type} placeholder={placeholder} value={(form as any)[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} className="w-full px-3.5 py-2.5 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors" />
+                    <input
+                      type={type}
+                      placeholder={placeholder}
+                      value={(form as any)[key]}
+                      onChange={e => setForm({ ...form, [key]: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
+                    />
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Order summary sidebar */}
           <div className="lg:sticky lg:top-20 lg:self-start">
             <div className="bg-card rounded-2xl p-6 border border-border">
               <h2 className="font-semibold mb-5">Ringkasan Pesanan</h2>
@@ -1293,13 +1692,30 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
                 <p className="text-xs text-muted-foreground">{pkg.subtitle}</p>
               </div>
               <div className="space-y-2.5 mb-5 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Harga paket</span><span>{fmt(pkg.price)}</span></div>
-                {pkg.originalPrice && <div className="flex justify-between text-xs"><span className="text-muted-foreground">Hemat</span><span className="text-green-600">-{fmt(pkg.originalPrice - pkg.price)}</span></div>}
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Biaya layanan</span><span>Gratis</span></div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Harga paket</span>
+                  <span>{fmt(pkg.price)}</span>
+                </div>
+                {pkg.originalPrice && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Hemat</span>
+                    <span className="text-green-600">-{fmt(pkg.originalPrice - pkg.price)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Biaya layanan</span>
+                  <span>Gratis</span>
+                </div>
                 <div className="h-px bg-border" />
-                <div className="flex justify-between font-bold"><span>Total Pembayaran</span><span className="text-primary">{fmt(pkg.price)}</span></div>
+                <div className="flex justify-between font-bold">
+                  <span>Total Pembayaran</span>
+                  <span className="text-primary">{fmt(pkg.price)}</span>
+                </div>
               </div>
-              <button onClick={() => setPage("payment-method")} className="w-full py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] flex items-center justify-center gap-2">
+              <button
+                onClick={() => setPage("payment-method")}
+                className="w-full py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] flex items-center justify-center gap-2"
+              >
                 Lanjut ke Pembayaran <ArrowRight className="w-4 h-4" />
               </button>
               <div className="mt-4 flex items-center justify-center gap-4 text-[10px] text-muted-foreground">
@@ -1312,7 +1728,9 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
               <p className="text-xs font-semibold mb-2">Fitur Paket {pkg.name}</p>
               <ul className="space-y-1.5">
                 {pkg.features.map((f, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground"><Check className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />{f}</li>
+                  <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <Check className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />{f}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -1323,13 +1741,12 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-// ─── PAYMENT METHOD PAGE ──────────────────────────────────────────────────────
-
+// ── PAYMENT METHOD PAGE ──────────────────────────────────────────────────────
 function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
   const [activeGroup, setActiveGroup] = useState("va")
   const [selected, setSelected] = useState<string | null>(null)
   const group = PAYMENT_GROUPS.find(g => g.id === activeGroup)!
-  const pkg = PACKAGES[1] // standard
+  const pkg = PACKAGES[1]
 
   return (
     <div className="min-h-screen bg-secondary font-sans">
@@ -1349,17 +1766,14 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
           <button onClick={() => setPage("checkout")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><ChevronRight className="w-3.5 h-3.5 rotate-180" />Kembali</button>
         </div>
       </header>
-
       <div className="max-w-5xl mx-auto px-6 py-10">
         <div className="mb-8">
           <h1 className="font-serif text-3xl font-semibold mb-1">Pilih Metode Pembayaran</h1>
           <p className="text-muted-foreground text-sm">Powered by <span className="font-semibold text-foreground">Xendit</span> — Pembayaran aman & terpercaya</p>
         </div>
-
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <div className="bg-card rounded-2xl border border-border overflow-hidden">
-              {/* Method group tabs */}
               <div className="flex overflow-x-auto border-b border-border">
                 {PAYMENT_GROUPS.map(({ id, label, icon: Icon }) => (
                   <button key={id} onClick={() => { setActiveGroup(id); setSelected(null) }} className={`flex items-center gap-2 px-4 py-3.5 text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 ${activeGroup === id ? "text-primary border-b-2 border-primary bg-primary/5" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
@@ -1367,8 +1781,6 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
                   </button>
                 ))}
               </div>
-
-              {/* Methods */}
               <div className="p-5">
                 <p className="text-xs text-muted-foreground mb-4">Pilih {group.label} yang ingin Anda gunakan:</p>
                 <div className="space-y-2.5">
@@ -1389,8 +1801,6 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
                     </label>
                   ))}
                 </div>
-
-                {/* Instructions */}
                 <div className="mt-5 p-4 bg-secondary rounded-xl border border-border">
                   <p className="text-xs font-semibold mb-2">Cara Pembayaran {group.label}:</p>
                   <ol className="space-y-1.5">
@@ -1405,8 +1815,6 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
               </div>
             </div>
           </div>
-
-          {/* Summary */}
           <div className="lg:sticky lg:top-20 lg:self-start">
             <div className="bg-card rounded-2xl p-6 border border-border">
               <h2 className="font-semibold mb-5">Ringkasan Pembayaran</h2>
@@ -1423,7 +1831,6 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
                   <span>Total</span><span className="text-primary">{fmt(pkg.price)}</span>
                 </div>
               </div>
-
               {selected && (
                 <div className="mb-4 p-3 bg-primary/8 rounded-xl border border-primary/20 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
@@ -1433,14 +1840,12 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
                   </div>
                 </div>
               )}
-
               <button
                 onClick={() => { if (selected) setPage("payment-waiting"); else toast.error("Pilih metode pembayaran terlebih dahulu") }}
                 className={`w-full py-3.5 rounded-full text-sm font-medium transition-all flex items-center justify-center gap-2 ${selected ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}
               >
                 {selected ? <><CreditCard className="w-4 h-4" />Bayar Sekarang</> : "Pilih Metode Dulu"}
               </button>
-
               <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-[9px] text-muted-foreground">
                 <div className="flex items-center gap-1"><Shield className="w-3 h-3" />SSL Encrypted</div>
                 <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Xendit Secured</div>
@@ -1455,7 +1860,6 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
 }
 
 // ─── PAYMENT WAITING PAGE ─────────────────────────────────────────────────────
-
 function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
   const [copied, setCopied] = useState(false)
   const vaNumber = "8808 8088 5050 1234"
@@ -1482,7 +1886,6 @@ function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
           </div>
         </div>
       </header>
-
       <div className="max-w-3xl mx-auto px-6 py-10">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-yellow-50 border-2 border-yellow-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -1491,16 +1894,12 @@ function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
           <h1 className="font-serif text-3xl font-semibold mb-2">Selesaikan Pembayaran</h1>
           <p className="text-muted-foreground text-sm">Selesaikan pembayaran sebelum waktu habis</p>
         </div>
-
-        {/* Countdown */}
         <div className="bg-card rounded-2xl p-6 border border-border mb-5 flex flex-col items-center">
           <p className="text-xs text-muted-foreground mb-3 font-medium uppercase tracking-wide">Batas Waktu Pembayaran</p>
           <CountdownTimer initialSeconds={24 * 60 * 60} />
           <p className="text-xs text-muted-foreground mt-3">Pembayaran akan otomatis dibatalkan jika melewati batas waktu</p>
         </div>
-
         <div className="grid md:grid-cols-2 gap-5 mb-5">
-          {/* VA / QR */}
           <div className="bg-card rounded-2xl p-6 border border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-sm">BCA Virtual Account</h2>
@@ -1521,8 +1920,6 @@ function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
               ))}
             </div>
           </div>
-
-          {/* Order details */}
           <div className="bg-card rounded-2xl p-6 border border-border">
             <h2 className="font-semibold text-sm mb-4">Detail Pesanan</h2>
             <div className="space-y-3 text-sm mb-5">
@@ -1544,8 +1941,6 @@ function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
             </div>
           </div>
         </div>
-
-        {/* QRIS alternative */}
         <div className="bg-card rounded-2xl p-6 border border-border">
           <div className="flex items-center justify-between mb-5">
             <div>
@@ -1564,7 +1959,6 @@ function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
             </div>
           </div>
         </div>
-
         <div className="mt-5 p-4 bg-yellow-50 rounded-xl border border-yellow-200 flex items-start gap-3">
           <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-yellow-700">Jangan tutup halaman ini. Undangan Anda akan aktif otomatis setelah pembayaran berhasil dikonfirmasi. Proses verifikasi maksimal 1×24 jam.</p>
@@ -1574,27 +1968,67 @@ function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-// ─── PAYMENT SUCCESS PAGE ─────────────────────────────────────────────────────
-
+// ─── PAYMENT SUCCESS PAGE ────────────────────────────────────────────────────
 function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
   const pkg = PACKAGES[1]
+  const [saved, setSaved] = useState(false)
+
+  // HANYA simpan ke user_invitations SEKALI saat pembayaran berhasil
+  useEffect(() => {
+    if (saved) return // Cegah double-save
+
+    const currentInvitation = localStorage.getItem('current_invitation')
+    if (currentInvitation) {
+      try {
+        const invitation = JSON.parse(currentInvitation)
+        const updatedInvitation = {
+          ...invitation,
+          status: "Paid",
+          isActive: true,
+          paymentMethod: "BCA Virtual Account",
+          total: pkg.price,
+          invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-001`
+        }
+        localStorage.setItem('current_invitation', JSON.stringify(updatedInvitation))
+
+        // TAMBAHKAN ke user_invitations HANYA SEKALI
+        const allInvitations = JSON.parse(localStorage.getItem('user_invitations') || '[]')
+        const existingIndex = allInvitations.findIndex((inv: any) => inv.id === invitation.id)
+
+        if (existingIndex >= 0) {
+          // Update yang sudah ada
+          allInvitations[existingIndex] = updatedInvitation
+        } else {
+          // Tambah baru HANYA jika belum ada
+          allInvitations.push(updatedInvitation)
+        }
+        localStorage.setItem('user_invitations', JSON.stringify(allInvitations))
+        setSaved(true) // Tandai sudah disimpan
+      } catch (error) {
+        console.error('Error updating invitation status:', error)
+      }
+    }
+  }, [saved, pkg.price])
+
   return (
     <div className="min-h-screen bg-secondary font-sans flex items-center justify-center px-6 py-12">
       <div className="w-full max-w-lg">
         <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.6, ease: "easeOut" }}>
-          {/* Success icon */}
           <div className="text-center mb-8">
             <div className="relative inline-block mb-5">
               <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-12 h-12 text-green-500" />
               </div>
-              <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }} className="absolute inset-0 bg-green-100 rounded-full opacity-40" />
+              <motion.div
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="absolute inset-0 bg-green-100 rounded-full opacity-40"
+              />
             </div>
             <h1 className="font-serif text-3xl font-semibold text-foreground mb-2">Pembayaran Berhasil!</h1>
             <p className="text-muted-foreground text-sm">Terima kasih, undangan Anda sedang diproses</p>
           </div>
 
-          {/* Transaction card */}
           <div className="bg-card rounded-2xl border border-border overflow-hidden mb-5">
             <div className="bg-gradient-to-r from-green-50 to-primary/5 px-6 py-4 border-b border-border">
               <div className="flex items-center justify-between">
@@ -1619,17 +2053,21 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
             </div>
           </div>
 
-          {/* Notification */}
           <div className="p-4 bg-primary/8 rounded-xl border border-primary/20 flex items-start gap-3 mb-6">
             <Heart className="w-4 h-4 text-primary flex-shrink-0 mt-0.5 fill-primary/20" />
             <div>
               <p className="text-xs font-medium text-primary mb-0.5">Undangan sedang diproses</p>
-              <p className="text-xs text-muted-foreground">Kami akan mengirimkan notifikasi ke email <strong>anisa@email.com</strong> dan WhatsApp setelah undangan Anda siap dalam 1×24 jam.</p>
+              <p className="text-xs text-muted-foreground">
+                Kami akan mengirimkan notifikasi ke email <strong>anisa@email.com</strong> dan WhatsApp setelah undangan Anda siap dalam 1×24 jam.
+              </p>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
-            <button onClick={() => setPage("dashboard")} className="flex-1 py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] flex items-center justify-center gap-2">
+            <button
+              onClick={() => setPage("purchase-history")}
+              className="flex-1 py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] flex items-center justify-center gap-2"
+            >
               <Eye className="w-4 h-4" />Lihat Undangan Saya
             </button>
             <button className="flex-1 py-3.5 border border-border rounded-full text-sm hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2">
@@ -1637,7 +2075,10 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
             </button>
           </div>
 
-          <button onClick={() => setPage("landing")} className="w-full mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors text-center py-2">
+          <button
+            onClick={() => setPage("landing")}
+            className="w-full mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors text-center py-2"
+          >
             Kembali ke Beranda
           </button>
         </motion.div>
@@ -1646,22 +2087,20 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-// ─── PAYMENT FAILED PAGE ──────────────────────────────────────────────────────
-
+// ─── PAYMENT FAILED PAGE ─────────────────────────────────────────────────────
 function PaymentFailedPage({ setPage }: { setPage: (p: Page) => void }) {
   const [reason, setReason] = useState<"failed" | "expired">("expired")
+
   return (
     <div className="min-h-screen bg-secondary font-sans flex items-center justify-center px-6 py-12">
       <div className="w-full max-w-lg">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          {/* Toggle for demo */}
           <div className="flex justify-center mb-6">
             <div className="flex bg-card rounded-lg border border-border p-1">
               <button onClick={() => setReason("expired")} className={`px-3 py-1.5 text-xs rounded-md transition-all ${reason === "expired" ? "bg-yellow-50 text-yellow-600 border border-yellow-200" : "text-muted-foreground"}`}>Kadaluarsa</button>
               <button onClick={() => setReason("failed")} className={`px-3 py-1.5 text-xs rounded-md transition-all ${reason === "failed" ? "bg-red-50 text-red-500 border border-red-200" : "text-muted-foreground"}`}>Gagal</button>
             </div>
           </div>
-
           <div className="text-center mb-8">
             <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-5">
               {reason === "expired" ? <Clock className="w-12 h-12 text-yellow-500" /> : <XCircle className="w-12 h-12 text-red-500" />}
@@ -1675,7 +2114,6 @@ function PaymentFailedPage({ setPage }: { setPage: (p: Page) => void }) {
                 : "Terjadi kesalahan saat memproses pembayaran Anda. Silakan coba lagi."}
             </p>
           </div>
-
           <div className="bg-card rounded-2xl border border-border p-6 mb-5">
             <h3 className="font-semibold text-sm mb-3">Detail Transaksi</h3>
             <div className="space-y-2.5 text-sm">
@@ -1690,7 +2128,6 @@ function PaymentFailedPage({ setPage }: { setPage: (p: Page) => void }) {
               ))}
             </div>
           </div>
-
           <div className="flex flex-col gap-3 mb-5">
             <button onClick={() => setPage("payment-method")} className="w-full py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] flex items-center justify-center gap-2">
               <RefreshCw className="w-4 h-4" />Coba Lagi dengan Metode Lain
@@ -1699,8 +2136,6 @@ function PaymentFailedPage({ setPage }: { setPage: (p: Page) => void }) {
               <RefreshCw className="w-4 h-4" />Gunakan Metode Sama
             </button>
           </div>
-
-          {/* CS contact */}
           <div className="p-5 bg-card rounded-2xl border border-border">
             <p className="text-xs font-semibold mb-3 flex items-center gap-2"><Headphones className="w-4 h-4 text-primary" />Butuh Bantuan?</p>
             <p className="text-xs text-muted-foreground mb-3">Hubungi tim customer service kami jika Anda mengalami masalah pembayaran.</p>
@@ -1714,7 +2149,6 @@ function PaymentFailedPage({ setPage }: { setPage: (p: Page) => void }) {
             </div>
             <p className="text-center text-[10px] text-muted-foreground mt-3">Tersedia Senin–Sabtu, 08.00–21.00 WIB</p>
           </div>
-
           <button onClick={() => setPage("landing")} className="w-full mt-4 text-xs text-muted-foreground hover:text-foreground transition-colors text-center py-2">
             Kembali ke Beranda
           </button>
@@ -1724,10 +2158,7 @@ function PaymentFailedPage({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-// ─── ROOT ─────────────────────────────────────────────────────────────────────
-
 // ─── HALAMAN TAMBAHAN ─────────────────────────────────────────────────────────
-
 function TemplatesPage({ setPage }: { setPage: (p: Page) => void }) {
   return (
     <div className="min-h-screen bg-background">
@@ -1736,11 +2167,30 @@ function TemplatesPage({ setPage }: { setPage: (p: Page) => void }) {
         <h1 className="font-serif text-4xl font-semibold mb-4 text-center">Pilihan Tema Kami</h1>
         <p className="text-muted-foreground mb-12 text-center">Ratusan tema elegan siap digunakan.</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {["Elegant", "Floral", "Minimalist", "Modern", "Traditional", "Luxury"].map((t, i) => (
-            <div key={i} className="bg-card rounded-2xl border border-border p-4">
-              <div className="h-48 bg-secondary rounded-lg mb-4" />
-              <h3 className="font-semibold mb-2">{t}</h3>
-              <button onClick={() => setPage("checkout")} className="w-full py-2 bg-primary text-primary-foreground rounded-full text-sm">Gunakan</button>
+          {THEMES.map(({ name, img, badge }, i) => (
+            <div key={i} className="bg-card rounded-2xl border border-border overflow-hidden hover:shadow-lg transition-all">
+              <div className="relative h-48 overflow-hidden">
+                <img
+                  src={`https://images.unsplash.com/photo-${img}?w=600&h=400&fit=crop&auto=format`}
+                  alt={name}
+                  className="w-full h-full object-cover"
+                />
+                {badge && (
+                  <div className="absolute top-3 left-3 px-2.5 py-1 bg-primary text-primary-foreground rounded-full text-[10px] font-medium">
+                    {badge}
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-2">{name}</h3>
+                <p className="text-xs text-muted-foreground mb-3">24 variasi tersedia</p>
+                <button
+                  onClick={() => setPage("checkout")}
+                  className="w-full py-2 bg-primary text-primary-foreground rounded-full text-sm hover:bg-primary/90 transition-colors"
+                >
+                  Gunakan
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -1855,16 +2305,941 @@ function PrivacyPage({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-// ─── ROOT APP ─────────────────────────────────────────────────────────────────
+//// ─── PURCHASE HISTORY PAGE ─────────────────────────────────────────────────────
+function PurchaseHistoryPage({ setPage }: { setPage: (p: Page) => void }) {
+  const [invitations, setInvitations] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
+  // Load data dari localStorage saat komponen di-mount
+  useEffect(() => {
+    const loadInvitations = () => {
+      const allInvitations = JSON.parse(localStorage.getItem('user_invitations') || '[]')
+      // Hanya tampilkan data dari localStorage, JANGAN buat data default
+      setInvitations(allInvitations)
+      setLoading(false)
+    }
+    loadInvitations()
+
+    // Listen untuk perubahan storage
+    const handleStorageChange = () => {
+      loadInvitations()
+    }
+    window.addEventListener('storage', handleStorageChange)
+    // Juga listen untuk custom event jika ada update di tab yang sama
+    window.addEventListener('invitation-updated', handleStorageChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('invitation-updated', handleStorageChange)
+    }
+  }, [])
+
+  // UBAH DI SINI: handleEdit sekarang mengarah ke template-selection
+  const handleEdit = (invitation: any) => {
+    localStorage.setItem('current_invitation', JSON.stringify(invitation))
+    setPage("template-selection")  // ← UBAH dari "invitation-editor" ke "template-selection"
+  }
+
+  const handleToggleActive = (invitation: any) => {
+    const updated = { ...invitation, isActive: !invitation.isActive }
+    localStorage.setItem('current_invitation', JSON.stringify(updated))
+
+    const allInvitations = JSON.parse(localStorage.getItem('user_invitations') || '[]')
+    const index = allInvitations.findIndex((i: any) => i.id === invitation.id)
+    if (index >= 0) {
+      allInvitations[index] = updated
+      localStorage.setItem('user_invitations', JSON.stringify(allInvitations))
+    }
+
+    setInvitations(invitations.map(i => i.id === invitation.id ? updated : i))
+
+    // Dispatch custom event untuk update di komponen lain
+    window.dispatchEvent(new Event('invitation-updated'))
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-6xl mx-auto px-6 py-20">
+        <button
+          onClick={() => setPage("history")}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 flex items-center gap-1"
+        >
+          <ChevronRight className="w-4 h-4 rotate-180" /> Kembali ke Riwayat Transaksi
+        </button>
+
+        <h1 className="font-serif text-4xl font-semibold mb-2 text-center">Riwayat Pembelian</h1>
+        <p className="text-muted-foreground mb-12 text-center">Kelola undangan digital yang telah Anda beli</p>
+
+        {loading ? (
+          <div className="text-center py-8 text-muted-foreground">Memuat data...</div>
+        ) : invitations.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-muted-foreground mb-4">Belum ada undangan yang dibeli</p>
+            <button
+              onClick={() => setPage("checkout")}
+              className="px-6 py-3 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-all"
+            >
+              Buat Undangan Pertama
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-6 max-w-2xl mx-auto">
+            {invitations.map((inv) => {
+              const themeImages: Record<string, string> = {
+                "Elegant": "1519225421980-715cb0215aed",
+                "Floral": "1550005809-91ad75fb315f",
+                "Minimalist": "1464366400600-7168b8af9bc3",
+                "Modern": "1469371670807-013ccf25f16a",
+                "Traditional": "1583939003579-730e3918a45a",
+                "Luxury": "1519741497674-611481863552"
+              }
+              const imgId = themeImages[inv.theme] || "1519225421980-715cb0215aed"
+              const themeImageUrl = `https://images.unsplash.com/photo-${imgId}?w=400&h=300&fit=crop&auto=format`
+
+              return (
+                <div key={inv.id} className="bg-card rounded-2xl border border-border overflow-hidden hover:shadow-lg transition-all">
+                  <div className="relative h-48 overflow-hidden">
+                    <img
+                      src={themeImageUrl}
+                      alt={inv.theme}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-3 right-3">
+                      <span className={`text-xs px-3 py-1 rounded-full ${inv.isActive ? "bg-green-500 text-white" : "bg-gray-500 text-white"
+                        }`}>
+                        {inv.isActive ? "Aktif" : "Nonaktif"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="mb-4">
+                      <h3 className="font-serif text-2xl font-semibold">
+                        {inv.brideName && inv.groomName
+                          ? `${inv.brideName} & ${inv.groomName}`
+                          : inv.coupleName || "Undangan"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {inv.theme || "Elegant"} • {inv.package || "Standard"}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-xs text-muted-foreground mb-1">Kunjungan</p>
+                        <p className="font-semibold">{inv.visits || "0"}</p>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-xs text-muted-foreground mb-1">Status</p>
+                        <p className="font-semibold text-sm">
+                          {inv.isActive ? "Aktif" : "Nonaktif"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Tanggal Pembelian:</span>
+                        <span>{inv.purchaseDate || "-"}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Berlaku Hingga:</span>
+                        <span>{inv.validUntil || "-"}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleToggleActive(inv)}
+                        className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${inv.isActive
+                            ? "bg-yellow-500 text-white hover:bg-yellow-600"
+                            : "bg-green-500 text-white hover:bg-green-600"
+                          }`}
+                      >
+                        {inv.isActive ? "Nonaktifkan" : "Aktifkan"}
+                      </button>
+                      <button
+                        onClick={() => handleEdit(inv)}
+                        className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-all"
+                      >
+                        Edit Undangan
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+// ── INVITATION EDITOR PAGE ────────────────────────────────────────────────────
+function InvitationEditorPage({ setPage }: { setPage: (p: Page) => void }) {
+  const [activeMenu, setActiveMenu] = useState<"template" | "addGuest">("template")
+  const [formData, setFormData] = useState({
+    brideName: "",
+    groomName: "",
+    weddingDate: "",
+    description: "",
+    guestName: "",
+    gallery: [] as string[],
+    logoSound: ""
+  })
+  const [guestList, setGuestList] = useState<string[]>([])
+  const [invitationId, setInvitationId] = useState<string>("")
+  const [loaded, setLoaded] = useState(false)
+
+  // Load data dari localStorage - JANGAN buat ID baru, gunakan yang sudah ada
+  useEffect(() => {
+    const savedData = localStorage.getItem('current_invitation')
+    if (savedData) {
+      try {
+        const existingData = JSON.parse(savedData)
+        // Gunakan ID yang sudah ada, JANGAN buat baru
+        setInvitationId(existingData.id)
+        setFormData({
+          brideName: existingData.brideName || "",
+          groomName: existingData.groomName || "",
+          weddingDate: existingData.weddingDate || "",
+          description: existingData.description || "",
+          guestName: "",
+          gallery: existingData.gallery || [],
+          logoSound: existingData.logoSound || ""
+        })
+        setGuestList(existingData.guestList || [])
+        setLoaded(true)
+      } catch (error) {
+        console.error('Error loading invitation data:', error)
+      }
+    }
+  }, [])
+
+  const handleAddGuest = () => {
+    if (!formData.guestName.trim()) {
+      toast.error("Nama tamu tidak boleh kosong!")
+      return
+    }
+    if (formData.guestName.includes(" ")) {
+      toast.error("Nama tamu tidak boleh ada spasi!")
+      return
+    }
+    if (guestList.includes(formData.guestName)) {
+      toast.error("Nama tamu sudah ada di daftar!")
+      return
+    }
+    const updatedGuestList = [...guestList, formData.guestName]
+    setGuestList(updatedGuestList)
+    setFormData({ ...formData, guestName: "" })
+    toast.success("Tamu berhasil ditambahkan!")
+    saveToLocalStorage(updatedGuestList)
+  }
+
+  const handleRemoveGuest = (index: number) => {
+    const updatedGuestList = guestList.filter((_, i) => i !== index)
+    setGuestList(updatedGuestList)
+    toast.success("Tamu berhasil dihapus!")
+    saveToLocalStorage(updatedGuestList)
+  }
+
+  const saveToLocalStorage = (currentGuestList?: string[]) => {
+    if (!invitationId) {
+      toast.error("ID undangan tidak ditemukan!")
+      return
+    }
+
+    const guestsToSave = currentGuestList || guestList
+    const invitationData = {
+      id: invitationId, // Gunakan ID yang sudah ada, JANGAN buat baru
+      coupleName: formData.brideName && formData.groomName
+        ? `${formData.brideName} & ${formData.groomName}`
+        : "Anisa & Raka",
+      brideName: formData.brideName,
+      groomName: formData.groomName,
+      weddingDate: formData.weddingDate,
+      description: formData.description,
+      guestList: guestsToSave,
+      gallery: formData.gallery,
+      logoSound: formData.logoSound,
+      theme: "Elegant",
+      package: "Standard",
+      status: "Published",
+      visits: "2.847",
+      createdAt: new Date().toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
+    }
+
+    // Simpan ke current_invitation
+    localStorage.setItem('current_invitation', JSON.stringify(invitationData))
+
+    // UPDATE yang sudah ada di user_invitations, JANGAN buat baru
+    const allInvitations = JSON.parse(localStorage.getItem('user_invitations') || '[]')
+    const existingIndex = allInvitations.findIndex((inv: any) => inv.id === invitationId)
+
+    if (existingIndex >= 0) {
+      // Update yang sudah ada
+      allInvitations[existingIndex] = invitationData
+    } else {
+      // Jika tidak ada (seharusnya tidak terjadi), tambahkan
+      allInvitations.push(invitationData)
+    }
+    localStorage.setItem('user_invitations', JSON.stringify(allInvitations))
+  }
+
+  const handleSave = () => {
+    if (!formData.brideName || !formData.groomName) {
+      toast.error("Mohon lengkapi nama mempelai!")
+      return
+    }
+    if (!formData.weddingDate) {
+      toast.error("Mohon pilih tanggal pernikahan!")
+      return
+    }
+    saveToLocalStorage()
+    toast.success("Data undangan berhasil disimpan!")
+  }
+
+  const handleCancel = () => {
+    if (confirm("Apakah Anda yakin ingin membatalkan? Perubahan yang belum disimpan akan hilang.")) {
+      setPage("purchase-history")
+    }
+  }
+
+  if (!loaded) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Memuat data...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-4xl mx-auto px-6 py-20">
+        <button
+          onClick={() => setPage("purchase-history")}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 flex items-center gap-1"
+        >
+          <ChevronRight className="w-4 h-4 rotate-180" /> Kembali ke Riwayat Pembelian
+        </button>
+
+        <h1 className="font-serif text-4xl font-semibold mb-2 text-center">Editor Undangan Digital</h1>
+        <p className="text-muted-foreground mb-12 text-center">Kustomisasi undangan digital Anda</p>
+
+        <div className="flex justify-center gap-4 mb-8">
+          <button
+            onClick={() => setActiveMenu("template")}
+            className={`px-6 py-3 rounded-full text-sm font-medium transition-all ${activeMenu === "template"
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+          >
+            Template
+          </button>
+          <button
+            onClick={() => setActiveMenu("addGuest")}
+            className={`px-6 py-3 rounded-full text-sm font-medium transition-all ${activeMenu === "addGuest"
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+          >
+            Tambah Tamu
+          </button>
+        </div>
+
+        {activeMenu === "template" ? (
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-card rounded-2xl border border-border p-6">
+              <h2 className="font-serif text-2xl font-semibold mb-6">Tambah Data</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Nama Pengantin</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={formData.brideName}
+                      onChange={(e) => setFormData({ ...formData, brideName: e.target.value })}
+                      placeholder="Nama mempelai wanita"
+                      className="px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary"
+                    />
+                    <input
+                      type="text"
+                      value={formData.groomName}
+                      onChange={(e) => setFormData({ ...formData, groomName: e.target.value })}
+                      placeholder="Nama mempelai pria"
+                      className="px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Tanggal</label>
+                  <input
+                    type="date"
+                    value={formData.weddingDate}
+                    onChange={(e) => setFormData({ ...formData, weddingDate: e.target.value })}
+                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Deskripsi</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Tulis deskripsi undangan..."
+                    rows={4}
+                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Nama yang Diundang</label>
+                  <input
+                    type="text"
+                    value={formData.guestName}
+                    onChange={(e) => setFormData({ ...formData, guestName: e.target.value })}
+                    placeholder="Nama tamu (tanpa spasi)"
+                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Galeri</label>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || [])
+                      const fileNames = files.map(f => f.name)
+                      setFormData({ ...formData, gallery: fileNames })
+                      toast.success(`${fileNames.length} foto dipilih!`)
+                    }}
+                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm"
+                  />
+                  {formData.gallery.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {formData.gallery.length} file dipilih
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Logo Back Sound</label>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        setFormData({ ...formData, logoSound: file.name })
+                        toast.success("Audio dipilih!")
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm"
+                  />
+                  {formData.logoSound && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      File: {formData.logoSound}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleCancel}
+                  className="flex-1 py-3 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all"
+                >
+                  Simpan
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-card rounded-2xl border border-border p-6">
+              <h2 className="font-serif text-2xl font-semibold mb-6">Tambah Tamu</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Nama Tamu</label>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={formData.guestName}
+                      onChange={(e) => setFormData({ ...formData, guestName: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleAddGuest()
+                        }
+                      }}
+                      placeholder="Nama tamu (tidak boleh ada spasi)"
+                      className="flex-1 px-4 py-3 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary"
+                    />
+                    <button
+                      onClick={handleAddGuest}
+                      className="px-6 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all"
+                    >
+                      Tambah
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    * Nama tamu tidak boleh mengandung spasi. Gunakan underscore (_) jika diperlukan.
+                  </p>
+                </div>
+                {guestList.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-medium mb-3">Daftar Tamu ({guestList.length})</h3>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {guestList.map((guest, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                          <span className="text-sm">{guest}</span>
+                          <button
+                            onClick={() => handleRemoveGuest(index)}
+                            className="text-xs text-red-500 hover:text-red-600 font-medium"
+                          >
+                            Hapus
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {guestList.length === 0 && (
+                  <div className="mt-6 p-8 bg-muted/50 rounded-lg text-center">
+                    <p className="text-sm text-muted-foreground">Belum ada tamu yang ditambahkan</p>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleCancel}
+                  className="flex-1 py-3 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all"
+                >
+                  Simpan
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/// ─── HISTORY PAGE ─────────────────────────────────────────────────────────────
+function HistoryPage({ setPage }: { setPage: (p: Page) => void }) {
+  const [txFilter, setTxFilter] = useState("Semua")
+  const [invitations, setInvitations] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Load data dari localStorage
+  useEffect(() => {
+    const loadInvitations = () => {
+      const allInvitations = JSON.parse(localStorage.getItem('user_invitations') || '[]')
+
+      // Hanya ambil data dari localStorage, jangan buat default
+      setInvitations(allInvitations)
+      setLoading(false)
+    }
+
+    loadInvitations()
+
+    const handleStorageChange = () => {
+      loadInvitations()
+    }
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('invitation-updated', handleStorageChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('invitation-updated', handleStorageChange)
+    }
+  }, [])
+
+  // Filter transaksi berdasarkan status
+  const filteredInvitations = invitations.filter(inv => {
+    if (txFilter === "Semua") return true
+    if (txFilter === "Paid") return inv.status === "Paid"
+    if (txFilter === "Pending") return inv.status === "Pending"
+    if (txFilter === "Expired") return inv.status === "Expired"
+    if (txFilter === "Failed") return inv.status === "Failed"
+    return true
+  })
+
+  const handleEdit = (invitation: any) => {
+    localStorage.setItem('current_invitation', JSON.stringify(invitation))
+    setPage("template-selection")  // ← UBAH dari "invitation-editor" ke "template-selection"
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-6xl mx-auto px-6 py-20">
+        <button
+          onClick={() => setPage("landing")}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 flex items-center gap-1"
+        >
+          <ChevronRight className="w-4 h-4 rotate-180" /> Kembali ke Beranda
+        </button>
+
+        <h1 className="font-serif text-4xl font-semibold mb-2">Riwayat Transaksi</h1>
+        <p className="text-muted-foreground mb-8">Lihat semua transaksi dan kelola undangan Anda</p>
+
+        {/* Quick Actions */}
+        <div className="grid sm:grid-cols-3 gap-4 mb-8">
+          <button
+            onClick={() => setPage("checkout")}
+            className="bg-card border border-border rounded-2xl p-6 hover:shadow-lg transition-all text-left"
+          >
+            <Plus className="w-8 h-8 text-primary mb-3" />
+            <h3 className="font-semibold text-sm mb-1">Buat Undangan Baru</h3>
+            <p className="text-xs text-muted-foreground">Mulai dari Rp 99.000</p>
+          </button>
+          <button
+            onClick={() => setPage("purchase-history")}
+            className="bg-card border border-border rounded-2xl p-6 hover:shadow-lg transition-all text-left"
+          >
+            <Edit3 className="w-8 h-8 text-primary mb-3" />
+            <h3 className="font-semibold text-sm mb-1">Edit Undangan</h3>
+            <p className="text-xs text-muted-foreground">Kustomisasi desain</p>
+          </button>
+          <button
+            onClick={() => setPage("templates")}
+            className="bg-card border border-border rounded-2xl p-6 hover:shadow-lg transition-all text-left"
+          >
+            <Layout className="w-8 h-8 text-primary mb-3" />
+            <h3 className="font-semibold text-sm mb-1">Lihat Template</h3>
+            <p className="text-xs text-muted-foreground">Pilih tema baru</p>
+          </button>
+        </div>
+
+        {/* Transaction Table */}
+        <div className="bg-card rounded-2xl border border-border overflow-hidden">
+          <div className="p-6 border-b border-border">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-lg">Riwayat Transaksi</h2>
+                <p className="text-xs text-muted-foreground">{filteredInvitations.length} transaksi total</p>
+              </div>
+              <div className="flex bg-muted rounded-lg overflow-hidden border border-border">
+                {["Semua", "Paid", "Pending", "Expired", "Failed"].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setTxFilter(f)}
+                    className={`px-3 py-2 text-xs transition-colors ${txFilter === f
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted/80"
+                      }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="p-12 text-center text-muted-foreground">Memuat data...</div>
+          ) : filteredInvitations.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground">
+              <p>Belum ada transaksi. Silakan buat undangan baru.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">NO. INVOICE</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">TANGGAL</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">PELANGGAN</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">PAKET</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">METODE BAYAR</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">TOTAL</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">STATUS</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">AKSI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInvitations.map((inv, index) => (
+                    <tr key={inv.id || index} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                      <td className="px-6 py-4 text-sm font-mono text-primary">
+                        {inv.invoiceNumber || `INV-${String(index + 1).padStart(3, '0')}`}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        {inv.date || inv.purchaseDate || "-"}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium">
+                        {inv.brideName && inv.groomName
+                          ? `${inv.brideName} & ${inv.groomName}`
+                          : inv.coupleName || "-"}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs bg-secondary px-2 py-1 rounded-full">
+                          {inv.package || "Standard"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        {inv.paymentMethod || "BCA Virtual Account"}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold">
+                        {inv.total ? `Rp ${inv.total.toLocaleString('id-ID')}` : "Rp 199.000"}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs px-2 py-1 rounded-full ${inv.status === "Paid" ? "bg-green-50 text-green-600" :
+                          inv.status === "Pending" ? "bg-yellow-50 text-yellow-600" :
+                            inv.status === "Expired" ? "bg-gray-100 text-gray-600" :
+                              "bg-red-50 text-red-500"
+                          }`}>
+                          {inv.status || "Paid"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => handleEdit(inv)}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── TEMPLATE SELECTION PAGE ─────────────────────────────────────────────────
+function TemplateSelectionPage({ setPage }: { setPage: (p: Page) => void }) {
+  const [selectedTheme, setSelectedTheme] = useState<number | null>(null)
+  const [currentInvitation, setCurrentInvitation] = useState<any>(null)
+
+  // Load data undangan yang sedang diedit
+  useEffect(() => {
+    const saved = localStorage.getItem('current_invitation')
+    if (saved) {
+      try {
+        setCurrentInvitation(JSON.parse(saved))
+      } catch (error) {
+        console.error('Error loading invitation:', error)
+      }
+    }
+  }, [])
+
+  const handlePreview = () => {
+    if (selectedTheme === null) {
+      toast.error("Pilih template terlebih dahulu!")
+      return
+    }
+    alert("Halaman Preview akan segera hadir! Fitur ini sedang dalam pengembangan.")
+  }
+
+  const handleUseTemplate = () => {
+    if (selectedTheme === null) {
+      toast.error("Pilih template terlebih dahulu!")
+      return
+    }
+
+    // Update tema di current_invitation
+    const themeName = THEMES[selectedTheme].name
+    if (currentInvitation) {
+      const updatedInvitation = {
+        ...currentInvitation,
+        theme: themeName
+      }
+      localStorage.setItem('current_invitation', JSON.stringify(updatedInvitation))
+
+      // Update juga di user_invitations
+      const allInvitations = JSON.parse(localStorage.getItem('user_invitations') || '[]')
+      const existingIndex = allInvitations.findIndex((inv: any) => inv.id === currentInvitation.id)
+      if (existingIndex >= 0) {
+        allInvitations[existingIndex] = updatedInvitation
+        localStorage.setItem('user_invitations', JSON.stringify(allInvitations))
+      }
+    }
+
+    toast.success(`Template "${themeName}" dipilih!`)
+    // Redirect ke Editor Undangan Digital
+    setTimeout(() => {
+      setPage("invitation-editor")
+    }, 500)
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-6xl mx-auto px-6 py-20">
+        <button
+          onClick={() => setPage("purchase-history")}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 flex items-center gap-1"
+        >
+          <ChevronRight className="w-4 h-4 rotate-180" /> Kembali ke Riwayat Pembelian
+        </button>
+
+        <div className="text-center mb-12">
+          <h1 className="font-serif text-4xl font-semibold mb-2">Pilih Template</h1>
+          <p className="text-muted-foreground">Pilih tema yang sesuai dengan konsep pernikahan Anda</p>
+        </div>
+
+        {/* Info Undangan */}
+        {currentInvitation && (
+          <div className="max-w-2xl mx-auto mb-10">
+            <div className="bg-card rounded-2xl border border-border p-5">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Heart className="w-6 h-6 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-serif text-xl font-semibold truncate">
+                    {currentInvitation.brideName && currentInvitation.groomName
+                      ? `${currentInvitation.brideName} & ${currentInvitation.groomName}`
+                      : currentInvitation.coupleName || "Undangan"}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {currentInvitation.theme || "Elegant"} • {currentInvitation.package || "Standard"}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs text-muted-foreground">Tanggal</p>
+                  <p className="text-sm font-medium">
+                    {currentInvitation.weddingDate || "-"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Grid Template */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto mb-10">
+          {THEMES.map(({ name, img, badge }, i) => (
+            <div
+              key={i}
+              onClick={() => setSelectedTheme(i)}
+              className={`relative bg-card rounded-2xl border-2 overflow-hidden cursor-pointer transition-all hover:shadow-lg ${selectedTheme === i
+                ? "border-primary shadow-[0_0_0_3px_rgba(196,149,74,0.2)]"
+                : "border-border hover:border-primary/30"
+                }`}
+            >
+              <div className="relative h-56 overflow-hidden">
+                <img
+                  src={`https://images.unsplash.com/photo-${img}?w=600&h=400&fit=crop&auto=format`}
+                  alt={name}
+                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-foreground/30 to-transparent" />
+                {badge && (
+                  <div className="absolute top-3 left-3 px-2.5 py-1 bg-primary text-primary-foreground rounded-full text-[10px] font-medium">
+                    {badge}
+                  </div>
+                )}
+                {selectedTheme === i && (
+                  <div className="absolute top-3 right-3 w-7 h-7 bg-primary rounded-full flex items-center justify-center shadow-lg">
+                    <Check className="w-4 h-4 text-white" />
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold text-sm">{name}</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">24 variasi tersedia</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex justify-center gap-4 max-w-md mx-auto">
+          <button
+            onClick={handlePreview}
+            className="flex-1 py-3.5 border border-border rounded-full text-sm font-medium hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
+          >
+            <Eye className="w-4 h-4" /> Preview
+          </button>
+          <button
+            onClick={handleUseTemplate}
+            className={`flex-1 py-3.5 rounded-full text-sm font-medium transition-all flex items-center justify-center gap-2 ${selectedTheme !== null
+              ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)]"
+              : "bg-muted text-muted-foreground cursor-not-allowed"
+              }`}
+          >
+            Gunakan Template <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── ROOT APP ────────────────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState<Page>("landing")
   const [authTab, setAuthTab] = useState<AuthTab>("login")
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null)
+
+  // Fungsi saat login berhasil - CLEAR localStorage agar history kosong
+  const handleLogin = (user: { name: string; email: string }) => {
+    setCurrentUser(user)
+    setIsAuthenticated(true)
+    // Clear semua data localStorage saat login baru
+    localStorage.removeItem('current_invitation')
+    localStorage.removeItem('user_invitations')
+    localStorage.removeItem('editing_invitation')
+  }
+
+  // Fungsi saat logout
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    setCurrentUser(null)
+    // Clear semua data localStorage saat logout
+    localStorage.removeItem('current_invitation')
+    localStorage.removeItem('user_invitations')
+    localStorage.removeItem('editing_invitation')
+    setPage("landing")
+    toast.success("Berhasil logout!")
+  }
+
+  // Fungsi update profile
+  const handleUpdateProfile = (data: { name: string; email: string; password?: string }) => {
+    setCurrentUser({ name: data.name, email: data.email })
+    if (data.password) {
+      toast.success("Password berhasil diubah!")
+    }
+  }
 
   const render = () => {
     switch (page) {
-      case "login": return <AuthPage setPage={setPage} initialTab={authTab} />
-      case "dashboard": return <DashboardPage setPage={setPage} />
+      case "login":
+        return <AuthPage setPage={setPage} initialTab={authTab} onLogin={handleLogin} />
+      case "dashboard":
+        return <DashboardPage setPage={setPage} onLogout={handleLogout} />
+      case "edit-profile":
+        return <EditProfilePage setPage={setPage} currentUser={currentUser} onUpdateProfile={handleUpdateProfile} />
+      case "history":
+        return <HistoryPage setPage={setPage} />
+      case "purchase-history":
+        return <PurchaseHistoryPage setPage={setPage} />
+      case "invitation-editor":
+        return <InvitationEditorPage setPage={setPage} />
+      case "template-selection":  // ← TAMBAHKAN INI
+        return <TemplateSelectionPage setPage={setPage} />
       case "editor": return <EditorPage setPage={setPage} />
       case "checkout": return <CheckoutPage setPage={setPage} />
       case "payment-method": return <PaymentMethodPage setPage={setPage} />
@@ -1879,7 +3254,16 @@ export default function App() {
       case "contact": return <ContactPage setPage={setPage} />
       case "terms": return <TermsPage setPage={setPage} />
       case "privacy": return <PrivacyPage setPage={setPage} />
-      default: return <LandingPage setPage={setPage} setAuthTab={setAuthTab} />
+      default:
+        return (
+          <LandingPage
+            setPage={setPage}
+            setAuthTab={setAuthTab}
+            isAuthenticated={isAuthenticated}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+          />
+        )
     }
   }
 
