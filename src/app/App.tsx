@@ -889,32 +889,48 @@ function AuthPage({
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
 
-  const handleLogin = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false)
+  // ✅ LANGKAH 4A: register & login sungguhan ke backend (akun masuk tabel users)
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Validasi sederhana
-    if (tab === "register" && name.length < 3) {
-      toast.error("Nama minimal 3 karakter!")
-      return
+    if (tab === "register" && name.length < 3) { toast.error("Nama minimal 3 karakter!"); return }
+    if (email.length < 5 || !email.includes("@")) { toast.error("Email tidak valid!"); return }
+    if (password.length < 6) { toast.error("Password minimal 6 karakter!"); return }
+    setLoading(true)
+    try {
+      // 1) Daftar → akun benar-benar disimpan ke tabel users
+      if (tab === "register") {
+        const res = await fetch("http://localhost:5000/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password }),
+        })
+        const data = await res.json()
+        if (!data.success) { toast.error(data.message || "Registrasi gagal (email mungkin sudah terdaftar)"); return }
+        toast.success("Registrasi berhasil! Akun tersimpan di database. Silakan masuk.")
+        setTab("login")
+        return
+      }
+      // 2) Login via backend
+      const res = await fetch("http://localhost:5000/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const u = { id: data.user?.id, name: data.user?.name ?? "User", email: data.user?.email ?? email, role: data.user?.role ?? "Pengguna" }
+        localStorage.setItem("invito_user", JSON.stringify(u))
+        onLogin(u)
+        setTimeout(() => setPage("landing"), 800)
+      } else {
+        toast.error(data.message || "Email atau password salah")
+      }
+    } catch {
+      toast.error("Tidak dapat terhubung ke server. Pastikan backend NestJS berjalan!")
+    } finally {
+      setLoading(false)
     }
-    if (email.length < 5 || !email.includes("@")) {
-      toast.error("Email tidak valid!")
-      return
-    }
-    if (password.length < 6) {
-      toast.error("Password minimal 6 karakter!")
-      return
-    }
-    // Simulasi login berhasil
-    toast.success(tab === "login" ? "Login berhasil!" : "Registrasi berhasil!")
-    // Set user sebagai logged in
-    onLogin({
-      name: tab === "register" ? name : "User",
-      email: email
-    })
-    // Kembali ke halaman utama (frontend) setelah 1 detik
-    setTimeout(() => {
-      setPage("landing")
-    }, 1000)
   }
 
   return (
@@ -1529,6 +1545,9 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
         package: pkg.name,
         status: "Pending",
         visits: "0",
+        customerName: form.name,
+        customerEmail: form.email,
+        customerPhone: form.wa,
         purchaseDate: new Date().toLocaleDateString('id-ID', {
           day: 'numeric',
           month: 'long',
@@ -1544,14 +1563,17 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
         guestList: [],
         gallery: [],
         logoSound: "",
-        invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-001`,
+        invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Date.now()).slice(-4)}`,
         paymentMethod: "",
-        total: pkg.price
+        total: pkg.price,
+        name: form.name,
+        email: form.email,
+        wa: form.wa
       }
       // HANYA simpan sebagai draft, JANGAN push ke user_invitations
       localStorage.setItem('current_invitation', JSON.stringify(invitationData))
     }
-  }, [form.bride, form.groom, form.date, pkg.name])
+  }, [form.bride, form.groom, form.date, form.name, form.email, form.wa, pkg.name])
 
   return (
     <div className="min-h-screen bg-secondary font-sans">
@@ -1841,7 +1863,15 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
                 </div>
               )}
               <button
-                onClick={() => { if (selected) setPage("payment-waiting"); else toast.error("Pilih metode pembayaran terlebih dahulu") }}
+                onClick={() => {
+                  if (selected) {
+                    const m = group.items.find(i => i.code === selected)
+                    localStorage.setItem("selected_payment", m?.name || selected)
+                    setPage("payment-waiting")
+                  } else {
+                    toast.error("Pilih metode pembayaran terlebih dahulu")
+                  }
+                }}
                 className={`w-full py-3.5 rounded-full text-sm font-medium transition-all flex items-center justify-center gap-2 ${selected ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}
               >
                 {selected ? <><CreditCard className="w-4 h-4" />Bayar Sekarang</> : "Pilih Metode Dulu"}
@@ -1973,42 +2003,73 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
   const pkg = PACKAGES[1]
   const [saved, setSaved] = useState(false)
 
-  // HANYA simpan ke user_invitations SEKALI saat pembayaran berhasil
+  // ✅ LANGKAH 3 (REVISI): catat pembayaran ke DB — aman dari double-effect StrictMode
   useEffect(() => {
-    if (saved) return // Cegah double-save
-
-    const currentInvitation = localStorage.getItem('current_invitation')
-    if (currentInvitation) {
+    // Baca draft lalu LANGSUNG hapus sinkron → efek kedua tidak menemukan apa-apa
+    const raw = localStorage.getItem("current_invitation")
+    if (!raw) return
+    localStorage.removeItem("current_invitation")
+    let inv: any
+    try {
+      inv = JSON.parse(raw)
+    } catch {
+      return
+    }
+    const method = localStorage.getItem("selected_payment") || "BCA Virtual Account"
+    const record = async () => {
       try {
-        const invitation = JSON.parse(currentInvitation)
-        const updatedInvitation = {
-          ...invitation,
-          status: "Paid",
-          isActive: true,
-          paymentMethod: "BCA Virtual Account",
-          total: pkg.price,
-          invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-001`
-        }
-        localStorage.setItem('current_invitation', JSON.stringify(updatedInvitation))
-
-        // TAMBAHKAN ke user_invitations HANYA SEKALI
-        const allInvitations = JSON.parse(localStorage.getItem('user_invitations') || '[]')
-        const existingIndex = allInvitations.findIndex((inv: any) => inv.id === invitation.id)
-
-        if (existingIndex >= 0) {
-          // Update yang sudah ada
-          allInvitations[existingIndex] = updatedInvitation
+        // 1) Buat undangan (Published) di database
+        const invRes = await fetch("http://localhost:5000/api/invitations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            coupleName: inv.coupleName || "Undangan Baru",
+            theme: inv.theme || "Elegant",
+            status: "Published",
+            visits: 0,
+            settings: {
+              brideName: inv.brideName,
+              groomName: inv.groomName,
+              weddingDate: inv.weddingDate,
+              pemesan: { name: inv.name, email: inv.email, wa: inv.wa },
+              paket: inv.package,
+            },
+          }),
+        })
+        const invData = await invRes.json()
+        const invitationId = invData.success ? invData.data?.id ?? null : null
+        // 2) Catat transaksi Paid yang terhubung ke undangan
+        const txRes = await fetch("http://localhost:5000/api/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invoice_number: inv.invoiceNumber || `INV-${Date.now()}`,
+            invitation_id: invitationId,
+            customer_name: inv.name || inv.coupleName || "Pelanggan",
+            customer_email: inv.email || "",
+            customer_phone: inv.wa || "",
+            package_name: inv.package || "Standard",
+            payment_method: method,
+            amount: inv.total || 199000,
+            admin_fee: 0,
+            total_amount: inv.total || 199000,
+            status: "Paid",
+            payment_date: new Date().toISOString(),
+          }),
+        })
+        const txData = await txRes.json()
+        if (txData.success) {
+          toast.success("Pembayaran berhasil! Undangan & transaksi tercatat di database.")
         } else {
-          // Tambah baru HANYA jika belum ada
-          allInvitations.push(updatedInvitation)
+          toast.error(txData.message || "Gagal mencatat transaksi.")
         }
-        localStorage.setItem('user_invitations', JSON.stringify(allInvitations))
-        setSaved(true) // Tandai sudah disimpan
-      } catch (error) {
-        console.error('Error updating invitation status:', error)
+      } catch (e) {
+        console.error("Gagal mencatat pembayaran:", e)
+        toast.error("Gagal mencatat pembayaran ke database.")
       }
     }
-  }, [saved, pkg.price])
+    record()
+  }, [])
 
   return (
     <div className="min-h-screen bg-secondary font-sans flex items-center justify-center px-6 py-12">
@@ -2057,6 +2118,7 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
             <Heart className="w-4 h-4 text-primary flex-shrink-0 mt-0.5 fill-primary/20" />
             <div>
               <p className="text-xs font-medium text-primary mb-0.5">Undangan sedang diproses</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Anda akan diarahkan kembali ke dashboard dalam beberapa detik…</p>
               <p className="text-xs text-muted-foreground">
                 Kami akan mengirimkan notifikasi ke email <strong>anisa@email.com</strong> dan WhatsApp setelah undangan Anda siap dalam 1×24 jam.
               </p>
@@ -2065,7 +2127,7 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
 
           <div className="flex flex-col sm:flex-row gap-3">
             <button
-              onClick={() => setPage("purchase-history")}
+              onClick={() => { window.location.href = "http://localhost:5174" }}
               className="flex-1 py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] flex items-center justify-center gap-2"
             >
               <Eye className="w-4 h-4" />Lihat Undangan Saya
@@ -2452,8 +2514,8 @@ function PurchaseHistoryPage({ setPage }: { setPage: (p: Page) => void }) {
                       <button
                         onClick={() => handleToggleActive(inv)}
                         className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${inv.isActive
-                            ? "bg-yellow-500 text-white hover:bg-yellow-600"
-                            : "bg-green-500 text-white hover:bg-green-600"
+                          ? "bg-yellow-500 text-white hover:bg-yellow-600"
+                          : "bg-green-500 text-white hover:bg-green-600"
                           }`}
                       >
                         {inv.isActive ? "Nonaktifkan" : "Aktifkan"}
@@ -3189,11 +3251,41 @@ function TemplateSelectionPage({ setPage }: { setPage: (p: Page) => void }) {
 
 // ── ROOT APP ────────────────────────────────────────────────────────────────
 export default function App() {
-  const [page, setPage] = useState<Page>("landing")
+  // ✅ LANGKAH 2a: baca param ?page=... dari URL (kiriman dari dashboard)
+  const getInitialPage = (): Page => {
+    const params = new URLSearchParams(window.location.search)
+    const target = params.get("page")
+    if (target === "checkout") return "checkout"
+    return "landing"
+  }
+  const [page, setPage] = useState<Page>(getInitialPage())
   const [authTab, setAuthTab] = useState<AuthTab>("login")
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null)
-
+  const [currentUser, setCurrentUser] = useState<{ id?: number; name: string; email: string; role?: string } | null>(null)
+  // ✅ LANGKAH 4A-2: pulihkan sesi dari localStorage supaya refresh tidak logout
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("invito_user")
+      if (raw) {
+        const u = JSON.parse(raw)
+        if (u && u.email) {
+          setCurrentUser(u)
+          setIsAuthenticated(true)
+        }
+      }
+    } catch {
+      /* abaikan */
+    }
+  }, [])
+  // ✅ LANGKAH 2b: setelah pembayaran berhasil, otomatis kembali ke dashboard
+  useEffect(() => {
+    if (page === "payment-success") {
+      const t = setTimeout(() => {
+        window.location.href = "http://localhost:5174"
+      }, 6000)
+      return () => clearTimeout(t)
+    }
+  }, [page])
   // Fungsi saat login berhasil - CLEAR localStorage agar history kosong
   const handleLogin = (user: { name: string; email: string }) => {
     setCurrentUser(user)
@@ -3203,12 +3295,11 @@ export default function App() {
     localStorage.removeItem('user_invitations')
     localStorage.removeItem('editing_invitation')
   }
-
   // Fungsi saat logout
   const handleLogout = () => {
     setIsAuthenticated(false)
     setCurrentUser(null)
-    // Clear semua data localStorage saat logout
+    localStorage.removeItem("invito_user")
     localStorage.removeItem('current_invitation')
     localStorage.removeItem('user_invitations')
     localStorage.removeItem('editing_invitation')
