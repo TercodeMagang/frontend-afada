@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import { Toaster, toast } from "sonner"
+import GuestInvitationPage from "../pages/GuestInvitationPage"
 
 // ─── SCROLL RESTORATION HOOK ─────────────────────────────────────────────────
 function useScrollRestoration(pageName: string) {
@@ -1519,245 +1520,156 @@ function EditorPage({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-/// ─── CHECKOUT PAGE ───────────────────────────────────────────────────────────
+// ─── CHECKOUT PAGE ────────────────────────────────────────────────────────────
 function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
   const [selectedPkg, setSelectedPkg] = useState("standard")
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    wa: "",
-    bride: "",
-    groom: "",
-    date: ""
-  })
-  const pkg = PACKAGES.find(p => p.id === selectedPkg)!
+  const [form, setForm] = useState({ name: "", email: "", wa: "", bride: "", groom: "", date: "" })
 
-  // HANYA simpan draft ke current_invitation, JANGAN ke user_invitations
+  // ✅ LANGKAH C2: muat paket dari database, fallback ke PACKAGES kalau gagal
+  const [packages, setPackages] = useState<any[]>(PACKAGES)
+  const [pkgLoading, setPkgLoading] = useState(true)
+
   useEffect(() => {
-    if (form.bride && form.groom && form.date) {
-      const invitationData = {
-        id: `inv_${Date.now()}`,
-        brideName: form.bride,
-        groomName: form.groom,
-        weddingDate: form.date,
-        coupleName: `${form.bride} & ${form.groom}`,
-        theme: "Elegant",
-        package: pkg.name,
-        status: "Pending",
-        visits: "0",
-        customerName: form.name,
-        customerEmail: form.email,
-        customerPhone: form.wa,
-        purchaseDate: new Date().toLocaleDateString('id-ID', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric'
-        }),
-        validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('id-ID', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric'
-        }),
-        isActive: false,
-        description: "",
-        guestList: [],
-        gallery: [],
-        logoSound: "",
-        invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Date.now()).slice(-4)}`,
-        paymentMethod: "",
-        total: pkg.price,
-        name: form.name,
-        email: form.email,
-        wa: form.wa
-      }
-      // HANYA simpan sebagai draft, JANGAN push ke user_invitations
-      localStorage.setItem('current_invitation', JSON.stringify(invitationData))
-    }
-  }, [form.bride, form.groom, form.date, form.name, form.email, form.wa, pkg.name])
+    fetch("http://localhost:5000/api/packages")
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.data?.length > 0) {
+          // Petakan kolom DB ke nama yang UI harapkan
+          const mapped = d.data.map((p: any) => ({
+            id: p.code,
+            name: p.name,
+            subtitle: p.subtitle,
+            price: Number(p.price),
+            originalPrice: p.original_price ? Number(p.original_price) : null,
+            features: typeof p.features === "string" ? JSON.parse(p.features) : (p.features || []),
+            popular: p.is_popular === true,
+            color: p.is_popular === true ? "border-primary" : "border-border",
+          }))
+          setPackages(mapped)
+          // Pastikan yang terpilih masih ada; kalau tidak, pakai paket pertama
+          if (!mapped.find((x: any) => x.id === selectedPkg)) {
+            setSelectedPkg(mapped[0].id)
+          }
+        }
+      })
+      .catch(e => { console.error("Gagal memuat paket, pakai fallback:", e) })
+      .finally(() => setPkgLoading(false))
+  }, [])
+
+  const pkg = packages.find(p => p.id === selectedPkg) || packages[0]
 
   return (
     <div className="min-h-screen bg-secondary font-sans">
       <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <button onClick={() => setPage("landing")} className="flex items-center gap-2">
-            <Heart className="w-4 h-4 text-primary fill-primary/20" />
+            <Heart className="w-5 h-5 text-primary fill-primary/25" />
             <span className="font-serif text-lg font-semibold italic">Invito</span>
           </button>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5 text-primary font-medium">
-              <div className="w-5 h-5 bg-primary text-white rounded-full flex items-center justify-center text-[10px]">1</div>
-              Pilih Paket
-            </div>
-            <div className="w-8 h-px bg-border" />
-            <div className="flex items-center gap-1.5">
-              <div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">2</div>
-              Metode Bayar
-            </div>
-            <div className="w-8 h-px bg-border" />
-            <div className="flex items-center gap-1.5">
-              <div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">3</div>
-              Konfirmasi
-            </div>
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-muted-foreground">Sudah punya akun?</span>
+            <button onClick={() => setPage("login")} className="text-primary font-medium hover:underline">Masuk</button>
           </div>
-          <button onClick={() => setPage("landing")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-            <ChevronRight className="w-3.5 h-3.5 rotate-180" />Kembali
-          </button>
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-10">
-        <div className="mb-8">
+      <div className="max-w-5xl mx-auto px-6 py-6">
+        <div className="flex items-center justify-center gap-2 text-[11px] mb-6">
+          <div className="flex items-center gap-1.5"><div className="w-5 h-5 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-[10px]">1</div>Pilih Paket</div>
+          <div className="w-8 h-px bg-border" />
+          <div className="flex items-center gap-1.5"><div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">2</div>Isi Data</div>
+          <div className="w-8 h-px bg-border" />
+          <div className="flex items-center gap-1.5"><div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">3</div>Metode Bayar</div>
+          <div className="w-8 h-px bg-border" />
+          <div className="flex items-center gap-1.5"><div className="w-5 h-5 bg-muted rounded-full flex items-center justify-center text-[10px]">4</div>Konfirmasi</div>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-6 py-4">
+        <div className="mb-6">
           <h1 className="font-serif text-3xl font-semibold mb-1">Pilih Paket & Checkout</h1>
           <p className="text-muted-foreground text-sm">Pilih paket yang sesuai dengan kebutuhan Anda</p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-5">
-            <div className="bg-card rounded-2xl p-6 border border-border">
-              <h2 className="font-semibold mb-4 flex items-center gap-2">
-                <Package className="w-4 h-4 text-primary" />Pilih Paket
-              </h2>
-              <div className="space-y-3">
-                {PACKAGES.map((p) => (
-                  <label
-                    key={p.id}
-                    onClick={() => setSelectedPkg(p.id)}
-                    className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPkg === p.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
-                      }`}
-                  >
-                    <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${selectedPkg === p.id ? "border-primary bg-primary" : "border-muted-foreground/30"
-                      }`}>
-                      {selectedPkg === p.id && <div className="w-2 h-2 bg-white rounded-full" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="font-semibold text-sm">{p.name}</span>
-                        {p.popular && <span className="px-1.5 py-0.5 bg-primary text-primary-foreground rounded text-[9px] font-medium">POPULER</span>}
+        {pkgLoading ? (
+          <div className="py-20 text-center text-sm text-muted-foreground">Memuat paket dari server...</div>
+        ) : (
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-5">
+              <div className="bg-card rounded-2xl p-6 border border-border">
+                <h2 className="font-semibold mb-4 flex items-center gap-2"><Package className="w-4 h-4 text-primary" />Pilih Paket</h2>
+                <div className="space-y-3">
+                  {packages.map((p) => (
+                    <label key={p.id} onClick={() => setSelectedPkg(p.id)} className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPkg === p.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}>
+                      <input type="radio" name="pkg" checked={selectedPkg === p.id} readOnly className="mt-1" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold">{p.name}</h3>
+                          {p.popular && <span className="text-[9px] px-2 py-0.5 bg-primary text-primary-foreground rounded-full font-medium">POPULER</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-2">{p.subtitle}</p>
+                        <div className="flex items-baseline gap-2 mb-3">
+                          <span className="text-lg font-semibold text-primary">{fmt(p.price)}</span>
+                          {p.originalPrice && <span className="text-xs text-muted-foreground line-through">{fmt(p.originalPrice)}</span>}
+                        </div>
+                        <ul className="space-y-1">
+                          {(p.features || []).slice(0, 4).map((f: string, j: number) => (
+                            <li key={j} className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                              <Check className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />{f}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                      <p className="text-xs text-muted-foreground mb-2">{p.subtitle}</p>
-                      <div className="flex flex-wrap gap-1">
-                        {p.features.slice(0, 3).map((f, i) => (
-                          <span key={i} className="text-[10px] bg-muted px-2 py-0.5 rounded-full">{f}</span>
-                        ))}
-                        {p.features.length > 3 && <span className="text-[10px] text-muted-foreground">+{p.features.length - 3} lainnya</span>}
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      {p.originalPrice && <p className="text-[10px] text-muted-foreground line-through">{fmt(p.originalPrice)}</p>}
-                      <p className="font-bold text-foreground">{fmt(p.price)}</p>
-                    </div>
-                  </label>
-                ))}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-card rounded-2xl p-6 border border-border">
+                <h2 className="font-semibold mb-4 flex items-center gap-2"><User className="w-4 h-4 text-primary" />Data Pemesan & Undangan</h2>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div><label className="text-xs font-medium mb-1.5 block">Nama Lengkap</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nama pemesan" className="w-full px-4 py-2.5 text-sm border border-border rounded-lg bg-muted outline-none focus:border-primary transition-colors" /></div>
+                  <div><label className="text-xs font-medium mb-1.5 block">Email</label><input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@domain.com" type="email" className="w-full px-4 py-2.5 text-sm border border-border rounded-lg bg-muted outline-none focus:border-primary transition-colors" /></div>
+                  <div className="sm:col-span-2"><label className="text-xs font-medium mb-1.5 block">Nomor WhatsApp</label><input value={form.wa} onChange={e => setForm({ ...form, wa: e.target.value })} placeholder="08xxxxxxxxxx" className="w-full px-4 py-2.5 text-sm border border-border rounded-lg bg-muted outline-none focus:border-primary transition-colors" /></div>
+                  <div><label className="text-xs font-medium mb-1.5 block">Nama Mempelai Pria</label><input value={form.groom} onChange={e => setForm({ ...form, groom: e.target.value })} placeholder="Nama pria" className="w-full px-4 py-2.5 text-sm border border-border rounded-lg bg-muted outline-none focus:border-primary transition-colors" /></div>
+                  <div><label className="text-xs font-medium mb-1.5 block">Nama Mempelai Wanita</label><input value={form.bride} onChange={e => setForm({ ...form, bride: e.target.value })} placeholder="Nama wanita" className="w-full px-4 py-2.5 text-sm border border-border rounded-lg bg-muted outline-none focus:border-primary transition-colors" /></div>
+                  <div className="sm:col-span-2"><label className="text-xs font-medium mb-1.5 block">Tanggal Resepsi</label><input value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} type="date" className="w-full px-4 py-2.5 text-sm border border-border rounded-lg bg-muted outline-none focus:border-primary transition-colors" /></div>
+                </div>
               </div>
             </div>
 
-            <div className="bg-card rounded-2xl p-6 border border-border">
-              <h2 className="font-semibold mb-4 flex items-center gap-2">
-                <Heart className="w-4 h-4 text-primary" />Detail Undangan
-              </h2>
-              <div className="grid sm:grid-cols-2 gap-4">
-                {[
-                  { label: "Nama Mempelai Wanita", key: "bride", placeholder: "Nama mempelai wanita" },
-                  { label: "Nama Mempelai Pria", key: "groom", placeholder: "Nama mempelai pria" },
-                  { label: "Tanggal Pernikahan", key: "date", placeholder: "", type: "date" },
-                ].map(({ label, key, placeholder, type }) => (
-                  <div key={key} className={key === "date" ? "sm:col-span-2" : ""}>
-                    <label className="text-xs font-medium mb-1.5 block">{label}</label>
-                    <input
-                      type={type ?? "text"}
-                      placeholder={placeholder}
-                      value={(form as any)[key]}
-                      onChange={e => setForm({ ...form, [key]: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-card rounded-2xl p-6 border border-border">
-              <h2 className="font-semibold mb-4 flex items-center gap-2">
-                <User className="w-4 h-4 text-primary" />Data Pemesan
-              </h2>
-              <div className="space-y-4">
-                {[
-                  { label: "Nama Lengkap", key: "name", placeholder: "Masukkan nama lengkap", type: "text" },
-                  { label: "Alamat Email", key: "email", placeholder: "nama@email.com", type: "email" },
-                  { label: "Nomor WhatsApp", key: "wa", placeholder: "08xxxxxxxxxx", type: "tel" },
-                ].map(({ label, key, placeholder, type }) => (
-                  <div key={key}>
-                    <label className="text-xs font-medium mb-1.5 block">{label}</label>
-                    <input
-                      type={type}
-                      placeholder={placeholder}
-                      value={(form as any)[key]}
-                      onChange={e => setForm({ ...form, [key]: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-input-background border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
-                    />
-                  </div>
-                ))}
+            <div className="lg:col-span-1">
+              <div className="bg-card rounded-2xl p-6 border border-border sticky top-20">
+                <h3 className="font-semibold mb-4">Ringkasan Pesanan</h3>
+                <div className="space-y-2 text-sm pb-4 border-b border-border">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Paket</span><span className="font-medium">{pkg?.name}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Harga</span><span>{fmt(pkg?.price || 0)}</span></div>
+                  {pkg?.originalPrice && (
+                    <div className="flex justify-between text-green-600"><span className="text-muted-foreground">Diskon</span><span>- {fmt(pkg.originalPrice - pkg.price)}</span></div>
+                  )}
+                </div>
+                <div className="flex justify-between font-bold pt-4 mb-5"><span>Total Bayar</span><span className="text-primary">{fmt(pkg?.price || 0)}</span></div>
+                <button onClick={() => {
+                  if (!form.name || !form.email || !form.wa || !form.bride || !form.groom || !form.date) { toast.error("Mohon lengkapi semua data terlebih dahulu!"); return }
+                  const sessionUser = JSON.parse(localStorage.getItem("invito_user") || "null")
+                  const draft = {
+                    package: pkg?.name,
+                    total: pkg?.price,
+                    name: form.name, email: form.email, wa: form.wa,
+                    groomName: form.groom, brideName: form.bride, weddingDate: form.date,
+                    coupleName: `${form.bride} & ${form.groom}`,
+                    invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Date.now()).slice(-4)}`,
+                    userId: sessionUser?.id ?? null,
+                    userEmail: sessionUser?.email ?? form.email,
+                  }
+                  localStorage.setItem("current_invitation", JSON.stringify(draft))
+                  setPage("payment-method")
+                }} className="w-full py-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-all">Lanjut ke Pembayaran</button>
+                <p className="text-[10px] text-muted-foreground text-center mt-3">Dengan melanjutkan, Anda menyetujui Syarat & Ketentuan Invito.</p>
               </div>
             </div>
           </div>
-
-          <div className="lg:sticky lg:top-20 lg:self-start">
-            <div className="bg-card rounded-2xl p-6 border border-border">
-              <h2 className="font-semibold mb-5">Ringkasan Pesanan</h2>
-              <div className="bg-gradient-to-br from-secondary to-accent/20 rounded-xl p-4 mb-5 border border-primary/15">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Paket dipilih</p>
-                    <p className="font-serif font-semibold">{pkg.name}</p>
-                  </div>
-                  <span className="text-xs bg-primary/15 text-primary rounded-full px-2 py-0.5">Aktif</span>
-                </div>
-                <p className="text-xs text-muted-foreground">{pkg.subtitle}</p>
-              </div>
-              <div className="space-y-2.5 mb-5 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Harga paket</span>
-                  <span>{fmt(pkg.price)}</span>
-                </div>
-                {pkg.originalPrice && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Hemat</span>
-                    <span className="text-green-600">-{fmt(pkg.originalPrice - pkg.price)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Biaya layanan</span>
-                  <span>Gratis</span>
-                </div>
-                <div className="h-px bg-border" />
-                <div className="flex justify-between font-bold">
-                  <span>Total Pembayaran</span>
-                  <span className="text-primary">{fmt(pkg.price)}</span>
-                </div>
-              </div>
-              <button
-                onClick={() => setPage("payment-method")}
-                className="w-full py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_4px_16px_rgba(196,149,74,0.4)] flex items-center justify-center gap-2"
-              >
-                Lanjut ke Pembayaran <ArrowRight className="w-4 h-4" />
-              </button>
-              <div className="mt-4 flex items-center justify-center gap-4 text-[10px] text-muted-foreground">
-                <div className="flex items-center gap-1"><Shield className="w-3 h-3" />Pembayaran aman</div>
-                <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Xendit secured</div>
-              </div>
-            </div>
-
-            <div className="mt-4 bg-card rounded-xl p-4 border border-border">
-              <p className="text-xs font-semibold mb-2">Fitur Paket {pkg.name}</p>
-              <ul className="space-y-1.5">
-                {pkg.features.map((f, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <Check className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />{f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -2016,6 +1928,34 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
       return
     }
     const method = localStorage.getItem("selected_payment") || "BCA Virtual Account"
+
+    // ✅ BACA sesi user yang sedang login (untuk kirim notifikasi)
+    let sessionUser: any = null
+    try {
+      const rawUser = localStorage.getItem("invito_user")
+      if (rawUser) sessionUser = JSON.parse(rawUser)
+    } catch { /* abaikan */ }
+
+    // ✅ LANGKAH AUTO-NOTIFIKASI: kirim notifikasi ke lonceng dashboard
+    const sendNotification = async () => {
+      if (!sessionUser?.id) return // Skip kalau user tamu (belum login)
+      try {
+        await fetch("http://localhost:5000/api/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: sessionUser.id,
+            type: "payment",
+            title: "Pembayaran Berhasil! 🎉",
+            message: `Pembayaran untuk paket ${inv.package || "Standard"} sebesar Rp ${(inv.total || 199000).toLocaleString("id-ID")} telah kami terima. Undangan digital Anda sedang diproses dan akan aktif dalam 1×24 jam.`,
+          }),
+        })
+      } catch (e) {
+        console.error("Gagal mengirim notifikasi:", e)
+        // Jangan tampilkan error ke user, karena transaksi sudah berhasil
+      }
+    }
+
     const record = async () => {
       try {
         // 1) Buat undangan (Published) di database
@@ -2060,6 +2000,7 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
         const txData = await txRes.json()
         if (txData.success) {
           toast.success("Pembayaran berhasil! Undangan & transaksi tercatat di database.")
+          await sendNotification() // ← KIRIM NOTIFIKASI SETELAH SUKSES
         } else {
           toast.error(txData.message || "Gagal mencatat transaksi.")
         }
@@ -3254,6 +3195,8 @@ export default function App() {
   // ✅ LANGKAH 2a: baca param ?page=... dari URL (kiriman dari dashboard)
   const getInitialPage = (): Page => {
     const params = new URLSearchParams(window.location.search)
+    // ✅ Link publik tamu: localhost:5173/?undangan=ID&tamu=Nama
+    if (params.get("undangan")) return "guest-invitation"
     const target = params.get("page")
     if (target === "checkout") return "checkout"
     return "landing"
@@ -3345,6 +3288,7 @@ export default function App() {
       case "contact": return <ContactPage setPage={setPage} />
       case "terms": return <TermsPage setPage={setPage} />
       case "privacy": return <PrivacyPage setPage={setPage} />
+      case "guest-invitation": return <GuestInvitationPage />
       default:
         return (
           <LandingPage
