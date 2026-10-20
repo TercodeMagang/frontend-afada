@@ -885,10 +885,15 @@ function AuthPage({
   initialTab: AuthTab
   onLogin: (user: { name: string; email: string }) => void
 }) {
-  const [tab, setTab] = useState<AuthTab>(initialTab)
-  const [email, setEmail] = useState("")
+  // ✅ 4A-2: mode guest-checkout → tab Daftar + form terisi otomatis dari draft checkout
+  const guestMode = localStorage.getItem("guest_checkout") === "1"
+  const [draft] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("current_invitation") || "null") } catch { return null }
+  })
+  const [tab, setTab] = useState<AuthTab>(guestMode ? "register" : initialTab)
+  const [email, setEmail] = useState(guestMode && draft?.email ? String(draft.email) : "")
   const [password, setPassword] = useState("")
-  const [name, setName] = useState("")
+  const [name, setName] = useState(guestMode && draft?.name ? String(draft.name) : "")
 
   const [loading, setLoading] = useState(false)
   // ✅ LANGKAH 4A: register & login sungguhan ke backend (akun masuk tabel users)
@@ -908,6 +913,27 @@ function AuthPage({
         })
         const data = await res.json()
         if (!data.success) { toast.error(data.message || "Registrasi gagal (email mungkin sudah terdaftar)"); return }
+        // ✅ 4A-3: guest-checkout → auto-login akun pending & langsung lanjut ke pembayaran
+        if (guestMode) {
+          const lr = await fetch("http://localhost:5000/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          })
+          const ld = await lr.json()
+          if (ld.success) {
+            const u = { id: ld.user?.id, name: ld.user?.name ?? name, email: ld.user?.email ?? email, role: ld.user?.role ?? "Pengguna" }
+            localStorage.setItem("invito_user", JSON.stringify(u))
+            localStorage.removeItem("guest_checkout")
+            onLogin(u)
+            toast.success("Akun dibuat (menunggu pembayaran). Lanjut ke pembayaran!")
+            setTimeout(() => setPage("payment-method"), 600)
+          } else {
+            toast.success("Registrasi berhasil! Silakan masuk.")
+            setTab("login")
+          }
+          return
+        }
         toast.success("Registrasi berhasil! Akun tersimpan di database. Silakan masuk.")
         setTab("login")
         return
@@ -1661,8 +1687,16 @@ function CheckoutPage({ setPage }: { setPage: (p: Page) => void }) {
                     invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Date.now()).slice(-4)}`,
                     userId: sessionUser?.id ?? null,
                     userEmail: sessionUser?.email ?? form.email,
+                    guest: !sessionUser,
                   }
                   localStorage.setItem("current_invitation", JSON.stringify(draft))
+                  // ✅ BARU: guest wajib daftar dulu sebelum bayar; data checkout aman tersimpan di draft
+                  if (!sessionUser) {
+                    localStorage.setItem("guest_checkout", "1")
+                    toast.info("Buat akun dulu untuk melanjutkan pembayaran — data checkout Anda sudah tersimpan.")
+                    setPage("login")
+                    return
+                  }
                   setPage("payment-method")
                 }} className="w-full py-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-all">Lanjut ke Pembayaran</button>
                 <p className="text-[10px] text-muted-foreground text-center mt-3">Dengan melanjutkan, Anda menyetujui Syarat & Ketentuan Invito.</p>
@@ -1914,10 +1948,11 @@ function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
 function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
   const pkg = PACKAGES[1]
   const [saved, setSaved] = useState(false)
+  const [isGuest, setIsGuest] = useState(false)
+  const [pkgInfo, setPkgInfo] = useState<any | null>(null)
 
-  // ✅ LANGKAH 3 (REVISI): catat pembayaran ke DB — aman dari double-effect StrictMode
+  // ✅ LANGKAH 3 (REVISI 2): catat pembayaran + konfirmasi akun + cabang guest/user lama
   useEffect(() => {
-    // Baca draft lalu LANGSUNG hapus sinkron → efek kedua tidak menemukan apa-apa
     const raw = localStorage.getItem("current_invitation")
     if (!raw) return
     localStorage.removeItem("current_invitation")
@@ -1929,16 +1964,17 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
     }
     const method = localStorage.getItem("selected_payment") || "BCA Virtual Account"
 
-    // ✅ BACA sesi user yang sedang login (untuk kirim notifikasi)
     let sessionUser: any = null
     try {
       const rawUser = localStorage.getItem("invito_user")
       if (rawUser) sessionUser = JSON.parse(rawUser)
     } catch { /* abaikan */ }
 
-    // ✅ LANGKAH AUTO-NOTIFIKASI: kirim notifikasi ke lonceng dashboard
+    const isGuestFlow = inv.guest === true
+    setIsGuest(isGuestFlow)
+
     const sendNotification = async () => {
-      if (!sessionUser?.id) return // Skip kalau user tamu (belum login)
+      if (!sessionUser?.id) return
       try {
         await fetch("http://localhost:5000/api/notifications", {
           method: "POST",
@@ -1952,13 +1988,12 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
         })
       } catch (e) {
         console.error("Gagal mengirim notifikasi:", e)
-        // Jangan tampilkan error ke user, karena transaksi sudah berhasil
       }
     }
 
     const record = async () => {
       try {
-        // 1) Buat undangan (Published) di database
+        // 1) Buat undangan Published — kini bertuan (user_id pemilik)
         const invRes = await fetch("http://localhost:5000/api/invitations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1967,6 +2002,7 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
             theme: inv.theme || "Elegant",
             status: "Published",
             visits: 0,
+            user_id: sessionUser?.id ?? null,
             settings: {
               brideName: inv.brideName,
               groomName: inv.groomName,
@@ -1978,13 +2014,14 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
         })
         const invData = await invRes.json()
         const invitationId = invData.success ? invData.data?.id ?? null : null
-        // 2) Catat transaksi Paid yang terhubung ke undangan
+        // 2) Catat transaksi Paid — terhubung ke undangan & pemilik
         const txRes = await fetch("http://localhost:5000/api/transactions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             invoice_number: inv.invoiceNumber || `INV-${Date.now()}`,
             invitation_id: invitationId,
+            user_id: sessionUser?.id ?? null,
             customer_name: inv.name || inv.coupleName || "Pelanggan",
             customer_email: inv.email || "",
             customer_phone: inv.wa || "",
@@ -1998,11 +2035,39 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
           }),
         })
         const txData = await txRes.json()
-        if (txData.success) {
-          toast.success("Pembayaran berhasil! Undangan & transaksi tercatat di database.")
-          await sendNotification() // ← KIRIM NOTIFIKASI SETELAH SUKSES
-        } else {
+        if (!txData.success) {
           toast.error(txData.message || "Gagal mencatat transaksi.")
+          return
+        }
+        toast.success("Pembayaran berhasil! Undangan & transaksi tercatat di database.")
+        await sendNotification()
+
+        // 3) ✅ Konfirmasi akun: pending → active + isi paket + terbitkan kode sekali pakai
+        const emailConfirm = sessionUser?.email ?? inv.userEmail ?? inv.email
+        const cfRes = await fetch("http://localhost:5000/api/auth/confirm-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: emailConfirm, package_name: inv.package || "Standard" }),
+        })
+        const cf = await cfRes.json()
+        if (!cf.success) {
+          toast.error(cf.message || "Gagal mengonfirmasi akun.")
+          return
+        }
+        if (isGuestFlow) {
+          // ✅ GUEST: akun aktif → lempar ke dashboard 5174 dengan kode sekali pakai
+          toast.success("Akun Anda terkonfirmasi! Mengarahkan ke dashboard...")
+          setTimeout(() => {
+            window.location.href = `http://localhost:5174/?code=${cf.login_code}`
+          }, 2500)
+        } else {
+          // ✅ USER LAMA: tetap di sini, tampilkan kartu paket / perpanjangan durasi
+          setPkgInfo({
+            packageName: cf.user?.package_name ?? inv.package ?? "Standard",
+            oldUntil: cf.old_valid_until ?? null,
+            newUntil: cf.user?.package_valid_until ?? null,
+            invoice: inv.invoiceNumber || "-",
+          })
         }
       } catch (e) {
         console.error("Gagal mencatat pembayaran:", e)
@@ -2055,13 +2120,28 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
             </div>
           </div>
 
+          {pkgInfo && (
+            <div className="bg-card rounded-2xl border border-primary/30 p-5 mb-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Package className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold">Paket {pkgInfo.packageName} Aktif!</h3>
+              </div>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between"><span className="text-muted-foreground">No. Invoice</span><span className="font-mono text-primary">{pkgInfo.invoice}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Masa aktif sebelumnya</span><span className="font-medium">{pkgInfo.oldUntil ? new Date(pkgInfo.oldUntil).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "Belum ada paket"}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Masa aktif baru</span><span className="font-semibold text-primary">{pkgInfo.newUntil ? new Date(pkgInfo.newUntil).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "Selamanya ♾️"}</span></div>
+              </div>
+            </div>
+          )}
           <div className="p-4 bg-primary/8 rounded-xl border border-primary/20 flex items-start gap-3 mb-6">
             <Heart className="w-4 h-4 text-primary flex-shrink-0 mt-0.5 fill-primary/20" />
             <div>
               <p className="text-xs font-medium text-primary mb-0.5">Undangan sedang diproses</p>
-              <p className="text-[10px] text-muted-foreground mt-1">Anda akan diarahkan kembali ke dashboard dalam beberapa detik…</p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {isGuest ? "Akun terkonfirmasi — Anda akan diarahkan ke dashboard dalam beberapa detik…" : "Paket Anda sudah aktif. Silakan buka dashboard untuk mengelola undangan."}
+              </p>
               <p className="text-xs text-muted-foreground">
-                Kami akan mengirimkan notifikasi ke email <strong>anisa@email.com</strong> dan WhatsApp setelah undangan Anda siap dalam 1×24 jam.
+                Kami akan mengirimkan notifikasi ke email Anda dan WhatsApp setelah undangan siap dalam 1×24 jam.
               </p>
             </div>
           </div>
@@ -3220,21 +3300,12 @@ export default function App() {
       /* abaikan */
     }
   }, [])
-  // ✅ LANGKAH 2b: setelah pembayaran berhasil, otomatis kembali ke dashboard
-  useEffect(() => {
-    if (page === "payment-success") {
-      const t = setTimeout(() => {
-        window.location.href = "http://localhost:5174"
-      }, 6000)
-      return () => clearTimeout(t)
-    }
-  }, [page])
+
   // Fungsi saat login berhasil - CLEAR localStorage agar history kosong
   const handleLogin = (user: { name: string; email: string }) => {
     setCurrentUser(user)
     setIsAuthenticated(true)
-    // Clear semua data localStorage saat login baru
-    localStorage.removeItem('current_invitation')
+    // ✅ current_invitation TIDAK dihapus: draft checkout guest harus bertahan sampai pembayaran sukses
     localStorage.removeItem('user_invitations')
     localStorage.removeItem('editing_invitation')
   }
