@@ -527,6 +527,9 @@ function LandingPage({
   onLogout: () => void
 }) {
   const scrollRef = useScrollRestoration("landing")
+  // ✅ Helper: scroll mulus ke section "Pilihan Paket yang Tepat"
+  const scrollToPaket = () => document.getElementById("paket-tepat")?.scrollIntoView({ behavior: "smooth", block: "start" })
+
 
   return (
     <div ref={scrollRef} className="min-h-screen bg-background font-sans overflow-auto">
@@ -554,7 +557,7 @@ function LandingPage({
             </p>
             <div className="flex flex-wrap gap-3 mb-10">
               <button
-                onClick={() => isAuthenticated ? setPage("checkout") : (setAuthTab("register"), setPage("login"))}
+                onClick={scrollToPaket}
                 className="px-8 py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_8px_28px_rgba(196,149,74,0.4)] flex items-center gap-2"
               >
                 Mulai Buat Undangan <ArrowRight className="w-4 h-4" />
@@ -648,7 +651,7 @@ function LandingPage({
                   <li key={i} className="flex items-start gap-2.5 text-sm"><Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />{f}</li>
                 ))}
               </ul>
-              <button onClick={() => setPage("checkout")} className="w-full py-3.5 bg-primary text-primary-foreground rounded-full text-sm hover:bg-primary/90 transition-all">Lihat Detail</button>
+              <button onClick={scrollToPaket} className="w-full py-3.5 bg-primary text-primary-foreground rounded-full text-sm hover:bg-primary/90 transition-all">Lihat Detail</button>
             </div>
             <div className="bg-card rounded-3xl p-8 border border-border hover:border-muted-foreground/30 transition-all hover:shadow-[0_12px_48px_rgba(0,0,0,0.07)]">
               <div className="w-12 h-12 bg-muted rounded-2xl flex items-center justify-center mb-5"><FileText className="w-6 h-6 text-muted-foreground" /></div>
@@ -694,7 +697,7 @@ function LandingPage({
                     >
                       Preview
                     </button>
-                    <button onClick={() => setPage("checkout")} className="px-3 py-1.5 text-[11px] bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors">
+                    <button onClick={scrollToPaket} className="px-3 py-1.5 text-[11px] bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors">
                       Gunakan
                     </button>
                   </div>
@@ -724,7 +727,7 @@ function LandingPage({
       </section>
 
       {/* PRICING */}
-      <section className="py-24 px-6 bg-secondary">
+      <section id="paket-tepat" className="py-24 px-6 bg-secondary">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-primary text-xs tracking-[0.2em] uppercase font-medium mb-3">Harga</p>
@@ -815,7 +818,7 @@ function LandingPage({
               <h2 className="font-serif text-4xl font-semibold mb-4 leading-tight">Buat Undangan Pernikahan<br />Impianmu Sekarang</h2>
               <p className="text-muted-foreground text-sm mb-8 max-w-sm mx-auto leading-relaxed">Bergabung dengan 10.000+ pasangan yang telah mempercayai Invito untuk hari spesial mereka.</p>
               <div className="flex flex-wrap justify-center gap-3">
-                <button onClick={() => setPage("checkout")} className="px-8 py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_8px_28px_rgba(196,149,74,0.4)] flex items-center gap-2">
+                <button onClick={scrollToPaket} className="px-8 py-3.5 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:shadow-[0_8px_28px_rgba(196,149,74,0.4)] flex items-center gap-2">
                   Mulai Gratis <ArrowRight className="w-4 h-4" />
                 </button>
                 <button onClick={() => setPage("templates")} className="px-8 py-3.5 border border-border rounded-full text-sm font-medium hover:border-primary hover:text-primary transition-all">Lihat Semua Template</button>
