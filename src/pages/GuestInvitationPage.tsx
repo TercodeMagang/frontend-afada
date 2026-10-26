@@ -53,6 +53,8 @@ export default function GuestInvitationPage() {
 
     // ✅ COUNTER KUNJUNGAN: hitung sekali per tab/sesi supaya tidak dobel saat refresh
     const countVisit = () => {
+        // ✅ Preview dari dashboard tidak dihitung sebagai kunjungan tamu
+        if (params.get("preview") === "1") return
         const key = `invito_visited_${invitationId}`
         if (sessionStorage.getItem(key)) return
         sessionStorage.setItem(key, "1")

@@ -1842,8 +1842,12 @@ function PaymentMethodPage({ setPage }: { setPage: (p: Page) => void }) {
 function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
   const [copied, setCopied] = useState(false)
   const vaNumber = "8808 8088 5050 1234"
-  const pkg = PACKAGES[1]
-
+  // ✅ Baca draft checkout supaya detail sesuai isi tamu
+  const [draft] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("current_invitation") || "null") } catch { return null }
+  })
+  const [method] = useState(() => localStorage.getItem("selected_payment") || "BCA Virtual Account")
+  const pkg = PACKAGES.find(p => p.name === draft?.package) ?? PACKAGES[1]
   const handleCopy = () => {
     setCopied(true)
     toast.success("Nomor VA berhasil disalin!")
@@ -1902,13 +1906,13 @@ function PaymentWaitingPage({ setPage }: { setPage: (p: Page) => void }) {
           <div className="bg-card rounded-2xl p-6 border border-border">
             <h2 className="font-semibold text-sm mb-4">Detail Pesanan</h2>
             <div className="space-y-3 text-sm mb-5">
-              <div className="flex justify-between"><span className="text-muted-foreground">No. Invoice</span><span className="font-mono text-xs text-primary">INV-20250112-001</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Nama</span><span className="font-medium">Anisa Rahmawati</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Mempelai</span><span className="font-medium">Anisa & Raka</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Paket</span><span>{pkg.name}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Metode</span><span>BCA Virtual Account</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">No. Invoice</span><span className="font-mono text-xs text-primary">{draft?.invoiceNumber || "-"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Nama</span><span className="font-medium">{draft?.name || "-"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Mempelai</span><span className="font-medium">{draft?.coupleName || "-"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Paket</span><span>{draft?.package || pkg.name}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Metode</span><span>{method}</span></div>
               <div className="h-px bg-border" />
-              <div className="flex justify-between font-bold"><span>Total Bayar</span><span className="text-primary">{fmt(pkg.price)}</span></div>
+              <div className="flex justify-between font-bold"><span>Total Bayar</span><span className="text-primary">{fmt(draft?.total || pkg.price)}</span></div>
             </div>
             <div className="flex gap-2">
               <button onClick={() => setPage("payment-success")} className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-full text-xs font-medium hover:bg-primary/90 transition-all">
@@ -1953,6 +1957,8 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
   const [saved, setSaved] = useState(false)
   const [isGuest, setIsGuest] = useState(false)
   const [pkgInfo, setPkgInfo] = useState<any | null>(null)
+  const [draft, setDraft] = useState<any>(null)
+  const [method] = useState(() => localStorage.getItem("selected_payment") || "BCA Virtual Account")
 
   // ✅ LANGKAH 3 (REVISI 2): catat pembayaran + konfirmasi akun + cabang guest/user lama
   useEffect(() => {
@@ -1965,7 +1971,6 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
     } catch {
       return
     }
-    const method = localStorage.getItem("selected_payment") || "BCA Virtual Account"
 
     let sessionUser: any = null
     try {
@@ -1975,6 +1980,7 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
 
     const isGuestFlow = inv.guest === true
     setIsGuest(isGuestFlow)
+    setDraft(inv)
 
     const sendNotification = async () => {
       if (!sessionUser?.id) return
@@ -2103,17 +2109,17 @@ function PaymentSuccessPage({ setPage }: { setPage: (p: Page) => void }) {
             <div className="bg-gradient-to-r from-green-50 to-primary/5 px-6 py-4 border-b border-border">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">No. Invoice</p>
-                <p className="text-xs font-mono font-bold text-primary">INV-20250112-001</p>
+                <p className="text-xs font-mono font-bold text-primary">{draft?.invoiceNumber || "-"}</p>
               </div>
             </div>
             <div className="p-6 space-y-3 text-sm">
               {[
                 { label: "Status", value: <StatusBadge status="Paid" /> },
-                { label: "Tanggal Bayar", value: "12 Januari 2025, 14:32 WIB" },
-                { label: "Mempelai", value: "Anisa & Raka" },
-                { label: "Paket", value: pkg.name },
-                { label: "Metode Bayar", value: "BCA Virtual Account" },
-                { label: "Total Bayar", value: <span className="font-bold text-primary">{fmt(pkg.price)}</span> },
+                { label: "Tanggal Bayar", value: `${new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}, ${new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB` },
+                { label: "Mempelai", value: draft?.coupleName || "-" },
+                { label: "Paket", value: draft?.package || pkg.name },
+                { label: "Metode Bayar", value: method },
+                { label: "Total Bayar", value: <span className="font-bold text-primary">{fmt(draft?.total || pkg.price)}</span> },
               ].map(({ label, value }, i) => (
                 <div key={i} className="flex justify-between items-center">
                   <span className="text-muted-foreground">{label}</span>
